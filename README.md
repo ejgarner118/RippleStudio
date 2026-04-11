@@ -37,3 +37,24 @@ npm install
 ## Version
 
 Bump **`apps/boardcad-desktop/package.json`** `version` together with **`apps/boardcad-desktop/src-tauri/tauri.conf.json`** `version`. The UI reads the npm version at build time via Vite (`VITE_APP_VERSION`).
+
+## Releasing (Windows → GitHub)
+
+CI runs **`npm run verify`** on pushes and pull requests to `main` / `master` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+To publish installers for download:
+
+1. Bump versions in **`apps/boardcad-desktop/package.json`** and **`apps/boardcad-desktop/src-tauri/tauri.conf.json`** (keep them identical, e.g. `0.1.1`).
+2. Commit and push to `main`.
+3. Create and push a **git tag** whose name starts with `v` and matches the app version, for example:
+   ```bash
+   git tag v0.1.1
+   git push origin v0.1.1
+   ```
+4. GitHub Actions runs [`.github/workflows/release-windows.yml`](.github/workflows/release-windows.yml): it builds the **NSIS `.exe`** and **`.msi`** bundles and creates a **Release** with those files attached.
+
+**Manual try without a tag:** in the repo on GitHub, open **Actions → Release (Windows) → Run workflow**. When finished, download the **artifact** from that run (installers are not attached to a Release until you use a `v*` tag).
+
+**Repository settings:** under **Settings → Actions → General → Workflow permissions**, choose **Read and write permissions** for the default `GITHUB_TOKEN` so the release job can create releases and upload assets.
+
+**Code signing (optional):** unsigned builds work, but Windows SmartScreen may warn until you add an Authenticode certificate and configure Tauri’s Windows signing environment variables ([Tauri: Windows code signing](https://v2.tauri.app/distribute/sign-windows/)).
