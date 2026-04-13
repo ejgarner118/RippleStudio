@@ -19,7 +19,7 @@ const DEFAULT_CAM: [number, number, number] = [1.8, 1.2, 2.4];
 const DEFAULT_TARGET = new THREE.Vector3(0, 0, 0);
 
 /** World-space bounds of outline + loft after the same centering as the scene group. */
-export function computeWorldContentBox(
+function computeWorldContentBox(
   outlineLowerXy: Float32Array,
   outlineUpperXy: Float32Array,
   loft: LoftMeshData | null,
