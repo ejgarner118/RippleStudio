@@ -146,14 +146,17 @@ export function getInterpolatedCrossSectionJava(
     }
     if (nextIndex > list.length - 2) {
       index = list.length - 2;
-      nextIndex = index;
+      nextIndex = list.length - 1;
     }
   }
 
   const firstPos = list[index]!.getPosition();
   const secondPos = list[nextIndex]!.getPosition();
-  let t = (x - firstPos) / (secondPos - firstPos);
+  const span = secondPos - firstPos;
+  let t = span !== 0 ? (x - firstPos) / span : 0;
   if (!Number.isFinite(t)) t = 0;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
 
   const c1 = list[index]!;
   const c2 = list[nextIndex]!;

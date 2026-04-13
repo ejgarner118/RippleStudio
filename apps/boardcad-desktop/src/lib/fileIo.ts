@@ -14,6 +14,11 @@ export async function readBoardFileBytes(
   return { path, data };
 }
 
+export async function readBytesFromPath(path: string): Promise<Uint8Array> {
+  const p = await filePathFromDialog(path);
+  return readFile(p);
+}
+
 export async function writeTextFromDialogPath(
   selected: string,
   body: string,

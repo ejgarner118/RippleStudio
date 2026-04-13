@@ -19,6 +19,7 @@ export type Point3Java = { x: number; y: number; z: number };
 /**
  * Java `BezierBoardControlPointInterpolationSurfaceModel.getPointAt`
  * (`minAngle`/`maxAngle` in **degrees**, `s` in [0,1] within the window).
+ * When `clampAlongLength` is false, samples at the true nose/tail (0 and length) for end caps.
  */
 export function getPointAtJava(
   board: BezierBoard,
@@ -27,11 +28,17 @@ export function getPointAtJava(
   minAngleDeg: number,
   maxAngleDeg: number,
   useMinimumAngleOnSharpCorners = true,
+  clampAlongLength = true,
 ): Point3Java | null {
   let x = xIn;
-  if (x < SURFACE_X_CLAMP_LOW) x = SURFACE_X_CLAMP_LOW;
   const len = getBoardLengthJava(board);
-  if (x > len - SURFACE_X_CLAMP_LOW) x = len - SURFACE_X_CLAMP_LOW;
+  if (clampAlongLength) {
+    if (x < SURFACE_X_CLAMP_LOW) x = SURFACE_X_CLAMP_LOW;
+    if (x > len - SURFACE_X_CLAMP_LOW) x = len - SURFACE_X_CLAMP_LOW;
+  } else {
+    if (x < 0) x = 0;
+    if (x > len) x = len;
+  }
 
   const cs = getInterpolatedCrossSectionJava(board, x);
   if (!cs) return null;
@@ -86,7 +93,98 @@ export function getSurfacePointAngled(
 export type SurfaceMeshJavaOptions = {
   lengthStepMm?: number;
   widthStepMm?: number;
+  /** Segments around the perimeter for nose/tail end caps (watertight closure). */
+  capSegments?: number;
 };
+
+function pushP(pos: number[], p: Point3Java): number {
+  const i = pos.length / 3;
+  pos.push(p.x, p.y, p.z);
+  return i;
+}
+
+function emitQuad(
+  pos: number[],
+  idx: number[],
+  v0: Point3Java,
+  v1: Point3Java,
+  v2: Point3Java,
+  v3: Point3Java,
+): void {
+  const i0 = pushP(pos, v0);
+  const i1 = pushP(pos, v1);
+  const i2 = pushP(pos, v2);
+  const i3 = pushP(pos, v3);
+  idx.push(i0, i1, i2, i0, i2, i3);
+  const j0 = pushP(pos, { x: v3.x, y: -v3.y, z: v3.z });
+  const j1 = pushP(pos, { x: v2.x, y: -v2.y, z: v2.z });
+  const j2 = pushP(pos, { x: v1.x, y: -v1.y, z: v1.z });
+  const j3 = pushP(pos, { x: v0.x, y: -v0.y, z: v0.z });
+  idx.push(j0, j1, j2, j0, j2, j3);
+}
+
+function centroid3(ring: Point3Java[]): Point3Java {
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const p of ring) {
+    x += p.x;
+    y += p.y;
+    z += p.z;
+  }
+  const n = ring.length;
+  return { x: x / n, y: y / n, z: z / n };
+}
+
+/** Fan + mirrored fan so caps match the mirrored half-hull topology. */
+function appendEndCap(
+  board: BezierBoard,
+  pos: number[],
+  idx: number[],
+  x: number,
+  nSeg: number,
+  outwardPlusX: boolean,
+): void {
+  const ring: Point3Java[] = [];
+  for (let i = 0; i < nSeg; i++) {
+    const s = (i + 0.5) / nSeg;
+    const p = getPointAtJava(board, x, s, -360, 360, true, false);
+    if (p) ring.push(p);
+  }
+  if (ring.length < 3) return;
+
+  const c = centroid3(ring);
+  const cIdx = pushP(pos, c);
+  const ringIdx: number[] = [];
+  for (const p of ring) {
+    ringIdx.push(pushP(pos, p));
+  }
+  const n = ringIdx.length;
+  for (let i = 0; i < n; i++) {
+    const a = ringIdx[i]!;
+    const b = ringIdx[(i + 1) % n]!;
+    if (outwardPlusX) {
+      idx.push(cIdx, b, a);
+    } else {
+      idx.push(cIdx, a, b);
+    }
+  }
+
+  const cM = pushP(pos, { x: c.x, y: -c.y, z: c.z });
+  const mRing: number[] = [];
+  for (const p of ring) {
+    mRing.push(pushP(pos, { x: p.x, y: -p.y, z: p.z }));
+  }
+  for (let i = 0; i < n; i++) {
+    const a = mRing[i]!;
+    const b = mRing[(i + 1) % n]!;
+    if (outwardPlusX) {
+      idx.push(cM, a, b);
+    } else {
+      idx.push(cM, b, a);
+    }
+  }
+}
 
 /**
  * Java `BezierBoard.update3DModel` deck + bottom strips (quad topology), then mirror Y.
@@ -98,6 +196,7 @@ export function buildJavaSurfaceMesh(
 ): { positions: Float32Array; indices: Uint32Array } | null {
   const lengthAcc = opts.lengthStepMm ?? 1;
   const widthAcc = opts.widthStepMm ?? 1;
+  const capSeg = Math.max(8, Math.min(128, opts.capSegments ?? 40));
 
   const length = getBoardLengthJava(board);
   if (length < 1e-3) return null;
@@ -114,24 +213,15 @@ export function buildJavaSurfaceMesh(
   const bottomMax = 360;
 
   type P = Point3Java;
-  const quads: P[] = [];
-
-  const emitQuad = (v0: P, v1: P, v2: P, v3: P) => {
-    quads.push(v0, v1, v2, v3);
-    quads.push(
-      { x: v3.x, y: -v3.y, z: v3.z },
-      { x: v2.x, y: -v2.y, z: v2.z },
-      { x: v1.x, y: -v1.y, z: v1.z },
-      { x: v0.x, y: -v0.y, z: v0.z },
-    );
-  };
+  const pos: number[] = [];
+  const idx: number[] = [];
 
   for (let i = 0; i < deckSteps; i++) {
     let xPos = 0;
     let v0: P;
     let v3: P;
     if (i === 0) {
-      v0 = getSurfacePointFullS(board, xPos, 0) ?? { x: xPos, y: 0, z: 0 };
+      v0 = getPointAtJava(board, xPos, 0, -360, 360, true) ?? { x: xPos, y: 0, z: 0 };
     } else {
       v0 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps) ?? {
         x: xPos,
@@ -149,7 +239,7 @@ export function buildJavaSurfaceMesh(
     for (let j = 1; j <= lengthSteps; j++) {
       let v1: P;
       if (i === 0) {
-        v1 = getSurfacePointFullS(board, xPos, 0) ?? { x: xPos, y: 0, z: 0 };
+        v1 = getPointAtJava(board, xPos, 0, -360, 360, true) ?? { x: xPos, y: 0, z: 0 };
       } else {
         v1 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps) ?? {
           x: xPos,
@@ -163,7 +253,7 @@ export function buildJavaSurfaceMesh(
           y: 0,
           z: 0,
         };
-      emitQuad(v0, v1, v2, v3);
+      emitQuad(pos, idx, v0, v1, v2, v3);
       v0 = v1;
       v3 = v2;
       xPos += lengthStep;
@@ -196,39 +286,18 @@ export function buildJavaSurfaceMesh(
           y: 0,
           z: 0,
         };
-      emitQuad(v0, v1, v2, v3);
+      emitQuad(pos, idx, v0, v1, v2, v3);
       v0 = v1;
       v3 = v2;
       xPos += lengthStep;
     }
   }
 
-  const vCount = quads.length;
-  const positions = new Float32Array(vCount * 3);
-  for (let i = 0; i < vCount; i++) {
-    const p = quads[i]!;
-    positions[i * 3] = p.x;
-    positions[i * 3 + 1] = p.y;
-    positions[i * 3 + 2] = p.z;
-  }
+  appendEndCap(board, pos, idx, 0, capSeg, false);
+  appendEndCap(board, pos, idx, length, capSeg, true);
 
-  const nQuad = vCount / 4;
-  const indices = new Uint32Array(nQuad * 6);
-  let w = 0;
-  for (let q = 0; q < nQuad; q++) {
-    const b = q * 4;
-    const a0 = b;
-    const a1 = b + 1;
-    const a2 = b + 2;
-    const a3 = b + 3;
-    indices[w++] = a0;
-    indices[w++] = a1;
-    indices[w++] = a2;
-    indices[w++] = a0;
-    indices[w++] = a2;
-    indices[w++] = a3;
-  }
-
+  const positions = new Float32Array(pos);
+  const indices = new Uint32Array(idx);
   return { positions, indices };
 }
 

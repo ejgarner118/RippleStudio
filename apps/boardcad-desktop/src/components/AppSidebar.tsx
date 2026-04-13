@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { BezierBoard } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
@@ -15,6 +16,26 @@ type AppSidebarProps = {
   onAddSection: () => void;
   onRemoveSection: () => void;
   onSetSectionStation: (pos: number) => void;
+  onDuplicateSection: () => void;
+  onInterpolateSection: () => void;
+  onMoveSectionEarlier: () => void;
+  onMoveSectionLater: () => void;
+  onAddSectionTemplate: (template: "current" | "soft" | "hard") => void;
+  selectedControlPoint: number | null;
+  onAddControlPoint: () => void;
+  onRemoveControlPoint: () => void;
+  canRemoveControlPoint: boolean;
+  onToggleContinuity: () => void;
+  onResetCurrentSpline: () => void;
+  validationIssues: string[];
+  onFixSectionOrder: () => void;
+  onApplyProfileShaping: (v: {
+    noseRocker: number;
+    tailRocker: number;
+    maxThickness: number;
+    maxThicknessPosPct: number;
+  }) => void;
+  onAddPairedProfilePoint: () => void;
   onMetadataChange: (
     patch: Partial<Pick<BezierBoard, "name" | "designer" | "comments" | "author">>,
   ) => void;
@@ -32,21 +53,39 @@ export function AppSidebar({
   onAddSection,
   onRemoveSection,
   onSetSectionStation,
+  onDuplicateSection,
+  onInterpolateSection,
+  onMoveSectionEarlier,
+  onMoveSectionLater,
+  onAddSectionTemplate,
+  selectedControlPoint,
+  onAddControlPoint,
+  onRemoveControlPoint,
+  canRemoveControlPoint,
+  onToggleContinuity,
+  onResetCurrentSpline,
+  validationIssues,
+  onFixSectionOrder,
+  onApplyProfileShaping,
+  onAddPairedProfilePoint,
   onMetadataChange,
   onUnitsChange,
 }: AppSidebarProps) {
   const cs = brd.crossSections[sectionIndex];
   const unitLabel = boardUnitsLabel(brd);
+  const [noseRocker, setNoseRocker] = useState(9);
+  const [tailRocker, setTailRocker] = useState(7);
+  const [maxThickness, setMaxThickness] = useState(4);
+  const [maxThicknessPosPct, setMaxThicknessPosPct] = useState(50);
 
   return (
     <aside className="sidebar" aria-label="View options and board info">
       <details className="sidebar-section" open>
-        <summary className="sidebar-section__summary">Edit</summary>
+        <summary className="sidebar-section__summary">Shape editing</summary>
         <div className="sidebar-section__body">
           <p className="sidebar-hint">
-            Choose which spline responds to dragging control points on the 2D
-            canvases (outline on plan, deck/bottom on profile, section on
-            cross-section view).
+            Mode -&gt; Select -&gt; Act. Pick an editing target, click a control point or
+            handle in canvas, then use the actions below.
           </p>
           <label className="sidebar-field">
             <span className="sidebar-field__label">Spline</span>
@@ -61,11 +100,36 @@ export function AppSidebar({
               <option value="section">Cross-section</option>
             </select>
           </label>
+          <p className="sidebar-hint">
+            Selection: {selectedControlPoint == null ? "none (click a point to begin)" : `#${selectedControlPoint + 1}`}
+          </p>
+          <div className="sidebar-actions">
+            <button type="button" className="btn btn--sm" onClick={onAddControlPoint}>
+              Insert point
+              <span className="shortcut-badge">A</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={onRemoveControlPoint}
+              disabled={!canRemoveControlPoint}
+            >
+              Remove point
+              <span className="shortcut-badge">Del</span>
+            </button>
+            <button type="button" className="btn btn--sm" onClick={onToggleContinuity}>
+              Toggle smooth corner
+              <span className="shortcut-badge">C</span>
+            </button>
+            <button type="button" className="btn btn--sm" onClick={onResetCurrentSpline}>
+              Safe reset spline
+            </button>
+          </div>
         </div>
       </details>
 
-      <details className="sidebar-section" open>
-        <summary className="sidebar-section__summary">Plan view</summary>
+      <details className="sidebar-section">
+        <summary className="sidebar-section__summary">View overlays</summary>
         <div className="sidebar-section__body">
           <p className="sidebar-hint">
             Half-outline from the file plus mirrored rail (classic outline print); guide
@@ -114,8 +178,8 @@ export function AppSidebar({
         </div>
       </details>
 
-      <details className="sidebar-section" open>
-        <summary className="sidebar-section__summary">Profile (rocker)</summary>
+      <details className="sidebar-section">
+        <summary className="sidebar-section__summary">Profile overlays</summary>
         <div className="sidebar-section__body">
           <p className="sidebar-hint">
             Deck and bottom curves use board length on the horizontal axis and
@@ -144,8 +208,8 @@ export function AppSidebar({
         </div>
       </details>
 
-      <details className="sidebar-section" open>
-        <summary className="sidebar-section__summary">3D</summary>
+      <details className="sidebar-section">
+        <summary className="sidebar-section__summary">3D preview</summary>
         <div className="sidebar-section__body">
           <p className="sidebar-hint">
             Loft needs at least two drawable cross-sections. Geometry uses real
@@ -165,7 +229,7 @@ export function AppSidebar({
       </details>
 
       <details className="sidebar-section" open>
-        <summary className="sidebar-section__summary">Cross-section</summary>
+        <summary className="sidebar-section__summary">Section authoring</summary>
         <div className="sidebar-section__body">
           {brd.crossSections.length === 0 ? (
             <>
@@ -198,7 +262,7 @@ export function AppSidebar({
                     this section.
                   </p>
                   <label className="sidebar-field">
-                    <span className="sidebar-field__label">Station (length)</span>
+                    <span className="sidebar-field__label">Station along board length</span>
                     <input
                       key={`${sectionIndex}-${cs.getPosition()}`}
                       type="number"
@@ -219,8 +283,71 @@ export function AppSidebar({
                 <button type="button" className="btn btn--sm" onClick={onAddSection}>
                   Add section
                 </button>
+                <button type="button" className="btn btn--sm" onClick={onDuplicateSection}>
+                  Duplicate
+                </button>
+                <button type="button" className="btn btn--sm" onClick={onInterpolateSection}>
+                  Interpolate
+                </button>
                 <button type="button" className="btn btn--sm" onClick={onRemoveSection}>
                   Remove section
+                </button>
+                <button type="button" className="btn btn--sm" onClick={onMoveSectionEarlier}>
+                  Move toward tail
+                </button>
+                <button type="button" className="btn btn--sm" onClick={onMoveSectionLater}>
+                  Move toward nose
+                </button>
+              </div>
+              <label className="sidebar-field">
+                <span className="sidebar-field__label">Add from template</span>
+                <div className="sidebar-actions">
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => onAddSectionTemplate("current")}
+                  >
+                    Current
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => onAddSectionTemplate("soft")}
+                  >
+                    Soft rail
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => onAddSectionTemplate("hard")}
+                  >
+                    Hard rail
+                  </button>
+                </div>
+              </label>
+            </>
+          )}
+        </div>
+      </details>
+
+      <details className="sidebar-section">
+        <summary className="sidebar-section__summary">Validation</summary>
+        <div className="sidebar-section__body">
+          {validationIssues.length === 0 ? (
+            <p className="sidebar-hint">No blocking geometry issues detected.</p>
+          ) : (
+            <>
+              <ul className="help-list">
+                {validationIssues.map((v) => (
+                  <li key={v}>{v}</li>
+                ))}
+              </ul>
+              <div className="sidebar-actions">
+                <button type="button" className="btn btn--sm" onClick={onFixSectionOrder}>
+                  Sort sections by station
+                </button>
+                <button type="button" className="btn btn--sm" onClick={onResetCurrentSpline}>
+                  Reset current spline
                 </button>
               </div>
             </>
@@ -228,7 +355,84 @@ export function AppSidebar({
         </div>
       </details>
 
-      <details className="sidebar-section" open>
+      <details className="sidebar-section">
+        <summary className="sidebar-section__summary">Profile shaping tools</summary>
+        <div className="sidebar-section__body">
+          <p className="sidebar-hint">
+            Surf-specific quick shaping for the stringer profile (length vs rocker/thickness). Apply
+            numbers as a baseline, then edit in profile view with deck/bottom overlays on.
+          </p>
+          <p className="sidebar-hint">
+            Editing tips: nose and tail anchors keep a fixed length station (horizontal drag is
+            ignored there); use vertical motion for rocker. The opposite stringer tip matches the
+            curve you drag so tips meet—add interior points near the ends if you need thickness
+            there. Orange tangent handles still move independently.
+          </p>
+          <label className="sidebar-field">
+            <span className="sidebar-field__label">Nose rocker</span>
+            <input
+              type="number"
+              step="0.5"
+              className="sidebar-field__input"
+              value={noseRocker}
+              onChange={(e) => setNoseRocker(Number(e.target.value))}
+            />
+          </label>
+          <label className="sidebar-field">
+            <span className="sidebar-field__label">Tail rocker</span>
+            <input
+              type="number"
+              step="0.5"
+              className="sidebar-field__input"
+              value={tailRocker}
+              onChange={(e) => setTailRocker(Number(e.target.value))}
+            />
+          </label>
+          <label className="sidebar-field">
+            <span className="sidebar-field__label">Max thickness</span>
+            <input
+              type="number"
+              step="0.5"
+              className="sidebar-field__input"
+              value={maxThickness}
+              onChange={(e) => setMaxThickness(Number(e.target.value))}
+            />
+          </label>
+          <label className="sidebar-field">
+            <span className="sidebar-field__label">Max thickness @ % length</span>
+            <input
+              type="number"
+              min={10}
+              max={90}
+              step="1"
+              className="sidebar-field__input"
+              value={maxThicknessPosPct}
+              onChange={(e) => setMaxThicknessPosPct(Number(e.target.value))}
+            />
+          </label>
+          <div className="sidebar-actions">
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() =>
+                onApplyProfileShaping({
+                  noseRocker,
+                  tailRocker,
+                  maxThickness,
+                  maxThicknessPosPct,
+                })
+              }
+            >
+              Apply profile shape
+            </button>
+            <button type="button" className="btn btn--sm" onClick={onAddPairedProfilePoint}>
+              Add paired profile point
+            </button>
+          </div>
+        </div>
+      </details>
+
+      <details className="sidebar-section">
         <summary className="sidebar-section__summary">Board metadata</summary>
         <div className="sidebar-section__body">
           <label className="sidebar-field">
@@ -271,7 +475,7 @@ export function AppSidebar({
         </div>
       </details>
 
-      <details className="sidebar-section" open>
+      <details className="sidebar-section">
         <summary className="sidebar-section__summary">Units</summary>
         <div className="sidebar-section__body">
           <p className="sidebar-hint" id="units-hint">

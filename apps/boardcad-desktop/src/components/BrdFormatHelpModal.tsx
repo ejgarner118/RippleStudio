@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 type BrdFormatHelpModalProps = {
   open: boolean;
@@ -7,26 +8,19 @@ type BrdFormatHelpModalProps = {
 
 export function BrdFormatHelpModal({ open, onClose }: BrdFormatHelpModalProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    closeBtnRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
 
   if (!open) return null;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="brd-help-title"
         className="modal-dialog modal-dialog--wide"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-dialog__header">
@@ -36,7 +30,7 @@ export function BrdFormatHelpModal({ open, onClose }: BrdFormatHelpModalProps) {
           <button
             ref={closeBtnRef}
             type="button"
-            className="modal-dialog__close"
+            className="modal-dialog__close icon-btn"
             onClick={onClose}
             aria-label="Close"
           >

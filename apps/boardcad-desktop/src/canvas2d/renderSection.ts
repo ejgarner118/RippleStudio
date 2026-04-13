@@ -3,9 +3,11 @@ import type { BBox2D } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
 import { PROFILE_PAD_PX } from "../constants";
 import {
+  type ControlPointMarkerState,
   computeFit,
   drawControlPoints,
   drawGuidePoints,
+  drawMetricGrid,
   strokePolyline,
 } from "./draw";
 
@@ -30,6 +32,7 @@ export function renderSectionView(
   profileXy: Float32Array,
   profileBounds: BBox2D | null,
   overlays: OverlayState,
+  markerState?: ControlPointMarkerState,
 ): void {
   ctx.fillStyle = "#faf8f5";
   ctx.fillRect(0, 0, cw, ch);
@@ -42,11 +45,16 @@ export function renderSectionView(
   }
 
   const tf = computeFit(profileBounds, cw, ch, PROFILE_PAD_PX);
+
+  if (overlays.grid) {
+    drawMetricGrid(ctx, tf, ch, profileBounds, 10);
+  }
+
   strokePolyline(ctx, profileXy, tf, ch, { color: "#2d6a4f", width: 2 });
 
   const sp = brd.crossSections[sectionIndex]?.getBezierSpline();
   if (sp && overlays.controlPoints) {
-    drawControlPoints(ctx, sp, tf, ch);
+    drawControlPoints(ctx, sp, tf, ch, markerState);
   }
   if (overlays.guidePoints && brd.crossSections[sectionIndex]) {
     drawGuidePoints(

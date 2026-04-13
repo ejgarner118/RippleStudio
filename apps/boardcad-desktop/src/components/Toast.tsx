@@ -23,13 +23,13 @@ export function Toast({
   return (
     <div
       className={`toast toast--${tone}`}
-      role="status"
-      aria-live="polite"
+      role={tone === "error" ? "alert" : "status"}
+      aria-live={tone === "error" ? "assertive" : "polite"}
     >
       <span className="toast__text">{message}</span>
       <button
         type="button"
-        className="toast__close"
+        className="toast__close icon-btn"
         onClick={onDismiss}
         aria-label="Dismiss notification"
       >

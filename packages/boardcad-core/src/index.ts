@@ -27,6 +27,7 @@ export * from "./settings/store.js";
 export * from "./settings/recentFiles.js";
 export * from "./board/createStarterBoard.js";
 export * from "./board/defaultCrossSection.js";
+export * from "./board/railTemplate.js";
 export * from "./commands/boardCommands.js";
 export * from "./export/boardMeshExport.js";
 export * from "./undo/commandStack.js";

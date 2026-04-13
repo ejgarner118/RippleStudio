@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { APP_DISPLAY_NAME } from "../constants/brand";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 type KeyboardShortcutsModalProps = {
   open: boolean;
@@ -11,6 +12,16 @@ const ROWS: [string, string][] = [
   ["Save", "Ctrl+S"],
   ["Save as…", "Ctrl+Shift+S"],
   ["Export…", "Alt+E"],
+  ["Fit all 2D views (plan / profile / section)", "View menu → Fit 2D views"],
+  ["Reset 3D to frame board", "View menu → Reset 3D view"],
+  ["Reset every workspace view", "View menu → Reset all views"],
+  ["3D preview: orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
+  ["Insert point after selection", "A"],
+  ["Remove control point", "Delete / Backspace"],
+  ["Toggle smooth corner", "C"],
+  ["Duplicate section", "Shift+D"],
+  ["Interpolate section", "Shift+I"],
+  ["Snap drag to 5-unit grid", "Hold Shift"],
   ["Undo", "Ctrl+Z"],
   ["Redo", "Ctrl+Y"],
   ["Close window", "Ctrl+W"],
@@ -18,26 +29,19 @@ const ROWS: [string, string][] = [
 
 export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModalProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    closeBtnRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
 
   if (!open) return null;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="kbd-shortcuts-title"
         className="modal-dialog modal-dialog--wide"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-dialog__header">
@@ -47,7 +51,7 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
           <button
             ref={closeBtnRef}
             type="button"
-            className="modal-dialog__close"
+            className="modal-dialog__close icon-btn"
             onClick={onClose}
             aria-label="Close"
           >
@@ -56,8 +60,9 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
         </div>
         <div className="modal-dialog__body">
           <p className="modal-dialog__hint">
-            Shortcuts for {APP_DISPLAY_NAME}. They are disabled while focus is in a text
-            field or select (except Escape in dialogs).
+            Shortcuts for {APP_DISPLAY_NAME}. Editing shortcuts act on the current editing
+            target and selected point. Shortcuts are disabled while focus is in a text field
+            or select (except Escape in dialogs).
           </p>
           <table className="shortcuts-table">
             <thead>

@@ -3,14 +3,15 @@ import type { BBox2D } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
 import { PROFILE_PAD_PX } from "../constants";
 import {
+  type ControlPointMarkerState,
   computeFit,
   drawControlPoints,
   drawGuidePoints,
+  drawMetricGrid,
   strokePolyline,
 } from "./draw";
 
-const EMPTY_HINT =
-  "Enable deck and/or bottom, or add profile splines (Java: printProfile).";
+const EMPTY_HINT = "Enable deck and/or bottom overlays to view and edit profile splines.";
 
 export function renderProfileView(
   ctx: CanvasRenderingContext2D,
@@ -21,6 +22,8 @@ export function renderProfileView(
   bottomXy: Float32Array,
   profileStringerBounds: BBox2D | null,
   overlays: OverlayState,
+  deckMarkers?: ControlPointMarkerState,
+  bottomMarkers?: ControlPointMarkerState,
 ): void {
   ctx.fillStyle = "#f8f6ff";
   ctx.fillRect(0, 0, cw, ch);
@@ -33,6 +36,10 @@ export function renderProfileView(
   }
 
   const tf = computeFit(profileStringerBounds, cw, ch, PROFILE_PAD_PX);
+
+  if (overlays.grid) {
+    drawMetricGrid(ctx, tf, ch, profileStringerBounds, 25);
+  }
 
   if (overlays.profileBottom && bottomXy.length >= 4) {
     strokePolyline(ctx, bottomXy, tf, ch, {
@@ -59,10 +66,10 @@ export function renderProfileView(
   }
   if (overlays.controlPoints) {
     if (overlays.profileDeck) {
-      drawControlPoints(ctx, brd.deck, tf, ch);
+      drawControlPoints(ctx, brd.deck, tf, ch, deckMarkers);
     }
     if (overlays.profileBottom) {
-      drawControlPoints(ctx, brd.bottom, tf, ch);
+      drawControlPoints(ctx, brd.bottom, tf, ch, bottomMarkers);
     }
   }
 }

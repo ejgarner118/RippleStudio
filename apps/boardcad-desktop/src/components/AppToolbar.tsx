@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import type { BoardCadSettings, LocaleId } from "@boardcad/core";
+import { useEffect, useRef } from "react";
+import type { BoardCadSettings } from "@boardcad/core";
 import { APP_DISPLAY_NAME } from "../constants/brand";
 
 export function closeMenus() {
@@ -24,8 +24,7 @@ type AppToolbarProps = {
   canRedo: boolean;
   onFit2d: () => void;
   onReset3d: () => void;
-  locale: LocaleId;
-  onLocaleChange: (loc: LocaleId) => void;
+  onResetAllViews: () => void;
   theme: BoardCadSettings["theme"];
   onThemeChange: (theme: BoardCadSettings["theme"]) => void;
   onKeyboardShortcuts: () => void;
@@ -53,14 +52,42 @@ export function AppToolbar({
   canRedo,
   onFit2d,
   onReset3d,
-  locale,
-  onLocaleChange,
+  onResetAllViews,
   theme,
   onThemeChange,
   onKeyboardShortcuts,
   onBrdFormatHelp,
   onAbout,
 }: AppToolbarProps) {
+  const menubarRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      const el = e.target;
+      if (!(el instanceof Node)) return;
+      if (menubarRef.current?.contains(el)) return;
+      closeMenus();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, []);
+
+  useEffect(() => {
+    const nav = menubarRef.current;
+    if (!nav) return;
+    const onToggle = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const opened = t.closest("details.menu") as HTMLDetailsElement | null;
+      if (!opened?.open) return;
+      nav.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach((d) => {
+        if (d !== opened) d.open = false;
+      });
+    };
+    nav.addEventListener("toggle", onToggle, true);
+    return () => nav.removeEventListener("toggle", onToggle, true);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -91,7 +118,7 @@ export function AppToolbar({
         <span className="app-toolbar__name">{APP_DISPLAY_NAME}</span>
       </div>
 
-      <nav className="menubar" aria-label="Application menu">
+      <nav ref={menubarRef} className="menubar" aria-label="Application menu">
         <details className="menu">
           <summary className="menu__trigger">File</summary>
           <ul className="menu__list" role="menu">
@@ -261,7 +288,20 @@ export function AppToolbar({
                   onReset3d();
                 }}
               >
-                Reset 3D camera
+                Reset 3D view
+              </button>
+            </li>
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="menu__item"
+                onClick={() => {
+                  closeMenus();
+                  onResetAllViews();
+                }}
+              >
+                Reset all views
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -359,26 +399,6 @@ export function AppToolbar({
           </ul>
         </details>
       </nav>
-
-      <div className="app-toolbar__locale">
-        <label htmlFor="toolbar-loc" className="visually-hidden">
-          Language
-        </label>
-        <select
-          id="toolbar-loc"
-          className="select select--toolbar"
-          value={locale}
-          onChange={(e) => onLocaleChange(e.target.value as LocaleId)}
-          aria-label="Language"
-        >
-          <option value="en">English</option>
-          <option value="fr">Français</option>
-          <option value="pt">Português</option>
-          <option value="es">Español</option>
-          <option value="no">Norsk</option>
-          <option value="nl">Nederlands</option>
-        </select>
-      </div>
     </header>
   );
 }

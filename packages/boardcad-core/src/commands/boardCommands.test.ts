@@ -3,9 +3,16 @@ import { BezierBoard } from "../model/bezierBoard.js";
 import { loadBrdFromText } from "../brd/brdReader.js";
 import { BOARD_WITH_SECTIONS_BRD } from "../defaultBoards.js";
 import {
+  InsertControlPointCommand,
+  MoveCrossSectionCommand,
   MoveControlPointsCommand,
+  RemoveControlPointCommand,
+  SetControlPointContinuityCommand,
+  isProfileStringerEndPair,
   knotSnapshot,
+  syncStringerSlaveFromMaster,
   translateKnotBy,
+  translateKnotByMasked,
 } from "./boardCommands.js";
 
 describe("boardCommands", () => {
@@ -23,5 +30,112 @@ describe("boardCommands", () => {
     expect(knotSnapshot(k)).toEqual(before);
     cmd.redo();
     expect(knotSnapshot(k)).toEqual(after);
+  });
+
+  it("InsertControlPointCommand grows spline and supports undo/redo", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "ins.brd")).toBe(0);
+    const before = board.outline.getNrOfControlPoints();
+    const cmd = new InsertControlPointCommand(board, { kind: "outline" }, 0);
+    cmd.redo();
+    expect(board.outline.getNrOfControlPoints()).toBe(before + 1);
+    cmd.undo();
+    expect(board.outline.getNrOfControlPoints()).toBe(before);
+  });
+
+  it("RemoveControlPointCommand shrinks spline and supports undo/redo", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "del.brd")).toBe(0);
+    new InsertControlPointCommand(board, { kind: "outline" }, 0).redo();
+    const before = board.outline.getNrOfControlPoints();
+    const cmd = new RemoveControlPointCommand(board, { kind: "outline" }, 1);
+    cmd.redo();
+    expect(board.outline.getNrOfControlPoints()).toBe(before - 1);
+    cmd.undo();
+    expect(board.outline.getNrOfControlPoints()).toBe(before);
+  });
+
+  it("SetControlPointContinuityCommand toggles and restores continuity", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "cont.brd")).toBe(0);
+    const k = board.outline.getControlPointOrThrow(1);
+    const before = k.isContinous();
+    const cmd = new SetControlPointContinuityCommand(board, [
+      { kind: "outline", index: 1 },
+    ]);
+    cmd.redo();
+    expect(k.isContinous()).toBe(!before);
+    cmd.undo();
+    expect(k.isContinous()).toBe(before);
+  });
+
+  it("translateKnotByMasked respects stringer end masks (X locked, Y free)", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "m.brd")).toBe(0);
+    board.setLocks();
+    const deckNose = board.deck.getControlPointOrThrow(0);
+    const x0 = deckNose.points[0]!.x;
+    const y0 = deckNose.points[0]!.y;
+    const { xDiff, yDiff } = translateKnotByMasked(deckNose, 50, -12);
+    expect(xDiff).toBe(0);
+    expect(yDiff).toBe(-12);
+    expect(deckNose.points[0]!.x).toBe(x0);
+    expect(deckNose.points[0]!.y).toBe(y0 - 12);
+  });
+
+  it("syncStringerSlaveFromMaster mates anchor and shifts slave tangents", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "syn.brd")).toBe(0);
+    const master = board.deck.getControlPointOrThrow(0);
+    const slave = board.bottom.getControlPointOrThrow(0);
+    master.points[0]!.x = 1;
+    master.points[0]!.y = 2;
+    master.points[1]!.x = 0;
+    master.points[1]!.y = 2;
+    master.points[2]!.x = 2;
+    master.points[2]!.y = 2;
+    slave.points[0]!.x = 10;
+    slave.points[0]!.y = 20;
+    slave.points[1]!.x = 9;
+    slave.points[1]!.y = 21;
+    slave.points[2]!.x = 11;
+    slave.points[2]!.y = 19;
+    syncStringerSlaveFromMaster(master, slave, 0, -3);
+    expect(slave.points[0]!.x).toBe(1);
+    expect(slave.points[0]!.y).toBe(2);
+    expect(slave.points[1]!.y).toBe(18);
+    expect(slave.points[2]!.y).toBe(16);
+  });
+
+  it("isProfileStringerEndPair detects deck+bottom stringer tips", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "pair.brd")).toBe(0);
+    expect(
+      isProfileStringerEndPair(board, [
+        { kind: "deck", index: 0, point: "end" },
+        { kind: "bottom", index: 0, point: "end" },
+      ]),
+    ).toBe(true);
+    expect(
+      isProfileStringerEndPair(board, [
+        { kind: "deck", index: 1, point: "end" },
+        { kind: "bottom", index: 0, point: "end" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("MoveCrossSectionCommand reorders sections with undo/redo", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "ord.brd")).toBe(0);
+    expect(board.crossSections.length).toBeGreaterThan(1);
+    const a = board.crossSections[0]!.getPosition();
+    const b = board.crossSections[1]!.getPosition();
+    const cmd = new MoveCrossSectionCommand(board, 0, 1);
+    cmd.redo();
+    expect(board.crossSections[0]!.getPosition()).toBe(b);
+    expect(board.crossSections[1]!.getPosition()).toBe(a);
+    cmd.undo();
+    expect(board.crossSections[0]!.getPosition()).toBe(a);
+    expect(board.crossSections[1]!.getPosition()).toBe(b);
   });
 });

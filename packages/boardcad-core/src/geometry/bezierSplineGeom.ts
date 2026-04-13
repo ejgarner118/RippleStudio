@@ -71,7 +71,10 @@ export function getPointByCurveLength(
   totalLen: number,
   curveLength: number,
 ): { x: number; y: number } {
-  if (curveLength <= 0) {
+  if (segments.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  if (totalLen <= 0 || curveLength <= 0) {
     const c = segments[0]!;
     return { x: c.getXValue(BS_ZERO), y: c.getYValue(BS_ZERO) };
   }
@@ -94,6 +97,9 @@ export function getPointByCurveLength(
 
 export function splineGetPointByS(spline: BezierSpline, s: number): { x: number; y: number } {
   const segs = splineSegments(spline);
+  if (segs.length === 0) {
+    return { x: 0, y: 0 };
+  }
   const tl = splineTotalLength(segs);
   return getPointByCurveLength(segs, tl, s * tl);
 }
@@ -102,6 +108,9 @@ export function getTangentByCurveLength(
   segments: CubicBezierGeom[],
   curveLength: number,
 ): number {
+  if (segments.length === 0) {
+    return 0;
+  }
   let l = curveLength;
   for (const curve of segments) {
     const cl = curve.getLengthFull();
@@ -116,6 +125,9 @@ export function getTangentByCurveLength(
 
 export function splineGetTangentByS(spline: BezierSpline, s: number): number {
   const segs = splineSegments(spline);
+  if (segs.length === 0) {
+    return 0;
+  }
   const tl = splineTotalLength(segs);
   return getTangentByCurveLength(segs, s * tl);
 }
@@ -128,6 +140,9 @@ export function getLengthByTangentReverse(
   targetAngle: number,
   useMinimumAngleOnSharpCorners: boolean,
 ): number {
+  if (segments.length === 0) {
+    return 0;
+  }
   let length = 0;
   let t = 0;
   let minAngleError = 1e15;

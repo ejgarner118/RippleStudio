@@ -8,29 +8,37 @@ import { computeFit, fromCanvas, type FitTransform } from "./draw";
 import type { BoardEditMode } from "../types/editMode";
 import type { OverlayState } from "../types/overlays";
 
-export function nearestControlPointEndIndex(
+type KnotPointKind = "end" | "prev" | "next";
+
+export function nearestControlPointPoint(
   spline: BezierSpline,
   x: number,
   y: number,
   radiusBoard: number,
-): number | null {
+): { index: number; point: KnotPointKind } | null {
   const r2 = radiusBoard * radiusBoard;
   const n = spline.getNrOfControlPoints();
-  let bestI: number | null = null;
+  let best: { index: number; point: KnotPointKind } | null = null;
   let bestD2 = r2;
   for (let i = 0; i < n; i++) {
     const k = spline.getControlPoint(i);
     if (!k) continue;
-    const p = k.getEndPoint();
-    const dx = p.x - x;
-    const dy = p.y - y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 <= bestD2) {
-      bestD2 = d2;
-      bestI = i;
+    const pts: Array<{ p: { x: number; y: number }; point: KnotPointKind }> = [
+      { p: k.getEndPoint(), point: "end" },
+      { p: k.getTangentToPrev(), point: "prev" },
+      { p: k.getTangentToNext(), point: "next" },
+    ];
+    for (const cand of pts) {
+      const dx = cand.p.x - x;
+      const dy = cand.p.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= bestD2) {
+        bestD2 = d2;
+        best = { index: i, point: cand.point };
+      }
     }
   }
-  return bestI;
+  return best;
 }
 
 export function clientToBoardMm(
@@ -65,23 +73,25 @@ export function pickEditTarget(
   overlays: OverlayState,
 ): SplineEditTarget | null {
   if (mode === "outline") {
-    const i = nearestControlPointEndIndex(brd.outline, x, y, radiusBoard);
-    return i == null ? null : { kind: "outline", index: i };
+    const hit = nearestControlPointPoint(brd.outline, x, y, radiusBoard);
+    return hit == null ? null : { kind: "outline", index: hit.index, point: hit.point };
   }
   if (mode === "deck" && overlays.profileDeck) {
-    const i = nearestControlPointEndIndex(brd.deck, x, y, radiusBoard);
-    return i == null ? null : { kind: "deck", index: i };
+    const hit = nearestControlPointPoint(brd.deck, x, y, radiusBoard);
+    return hit == null ? null : { kind: "deck", index: hit.index, point: hit.point };
   }
   if (mode === "bottom" && overlays.profileBottom) {
-    const i = nearestControlPointEndIndex(brd.bottom, x, y, radiusBoard);
-    return i == null ? null : { kind: "bottom", index: i };
+    const hit = nearestControlPointPoint(brd.bottom, x, y, radiusBoard);
+    return hit == null ? null : { kind: "bottom", index: hit.index, point: hit.point };
   }
   if (mode === "section") {
     const cs = brd.crossSections[sectionIndex];
     if (!cs) return null;
     const sp = cs.getBezierSpline();
-    const i = nearestControlPointEndIndex(sp, x, y, radiusBoard);
-    return i == null ? null : { kind: "section", sectionIndex, index: i };
+    const hit = nearestControlPointPoint(sp, x, y, radiusBoard);
+    return hit == null
+      ? null
+      : { kind: "section", sectionIndex, index: hit.index, point: hit.point };
   }
   return null;
 }

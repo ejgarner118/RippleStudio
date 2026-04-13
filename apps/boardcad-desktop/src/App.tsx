@@ -9,26 +9,40 @@ import {
 } from "react";
 import {
   AddCrossSectionCommand,
+  applyRailShapeTemplate,
   BezierBoard,
   CommandStack,
+  createBlankBoard,
   createDefaultCrossSection,
   createStarterBoard,
   exportBoardObj,
   exportBoardStlAscii,
   exportBoardStlBinary,
   firstDrawableCrossSectionIndex,
+  getBoardLengthJava,
+  getInterpolatedCrossSectionJava,
+  getKnot,
   getBrdReadError,
   loadBrdFromBytes,
   renderPrintSvg,
   saveBrdToString,
   addRecentFilePath,
   RemoveCrossSectionCommand,
+  RemoveControlPointCommand,
+  ResetSplineToLineCommand,
+  SetControlPointContinuityCommand,
   SetCrossSectionPositionCommand,
+  InsertControlPointCommand,
+  MoveCrossSectionCommand,
+  cloneCrossSection,
   setLocale,
   t,
-  type LocaleId,
+  type SplineEditTarget,
+  type SplineTarget,
 } from "@boardcad/core";
+import { join, resolveResource, resourceDir } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { BaseDirectory, readFile } from "@tauri-apps/plugin-fs";
 import {
   FILTER_BRD,
   FILTER_OBJ,
@@ -46,7 +60,9 @@ import { AboutModal } from "./components/AboutModal";
 import { AppSidebar } from "./components/AppSidebar";
 import { AppToolbar } from "./components/AppToolbar";
 import { BrdFormatHelpModal } from "./components/BrdFormatHelpModal";
+import { EmptyGuidedBanner } from "./components/EmptyGuidedBanner";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
+import { NewBoardModal, type NewBoardPreset } from "./components/NewBoardModal";
 import {
   ExportModal,
   type DesktopExportFormat,
@@ -63,6 +79,7 @@ import { confirmDiscardUnsaved } from "./lib/confirmDiscard";
 import {
   formatFsError,
   readBoardFileBytes,
+  readBytesFromPath,
   writeBytesFromDialogPath,
   writeTextFromDialogPath,
 } from "./lib/fileIo";
@@ -77,6 +94,15 @@ const BoardScene3D = lazy(async () => {
   return { default: m.BoardScene3D };
 });
 
+type TemplateFilePreset = Exclude<NewBoardPreset, "empty_advanced" | "empty_guided">;
+
+const TEMPLATE_FILE_BY_PRESET: Record<TemplateFilePreset, string> = {
+  standard: "Standard.brd",
+  shortboard: "ShortBoard.brd",
+  fish: "Fish.brd",
+  longboard: "LongBoard.brd",
+};
+
 export default function App() {
   const { settings, setSettings, resolvedTheme } = useDesktopSettings();
   const isDark = resolvedTheme === "dark";
@@ -89,18 +115,29 @@ export default function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [editMode, setEditMode] = useState<BoardEditMode>("outline");
+  const [selectedControlPoint, setSelectedControlPoint] = useState<number | null>(null);
+  const [selectedControlPointKind, setSelectedControlPointKind] = useState<
+    "end" | "prev" | "next" | null
+  >(null);
+  const [hoveredTarget, setHoveredTarget] = useState<SplineEditTarget | null>(null);
   const [overlays, setOverlays] = useState<OverlayState>(defaultOverlays);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [newBoardOpen, setNewBoardOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [brdHelpOpen, setBrdHelpOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [geometryWarning, setGeometryWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     tone: ToastTone;
   } | null>(null);
-  const [fit2dNonce, setFit2dNonce] = useState(0);
+  const [resetViewPlanNonce, setResetViewPlanNonce] = useState(0);
+  const [resetViewProfileNonce, setResetViewProfileNonce] = useState(0);
+  const [resetViewSectionNonce, setResetViewSectionNonce] = useState(0);
+  const [canvasLayoutNonce, setCanvasLayoutNonce] = useState(0);
   const [viewReset3dNonce, setViewReset3dNonce] = useState(0);
+  const [emptyGuidedStep, setEmptyGuidedStep] = useState<number | null>(null);
 
   const orbitRef = useRef<OrbitControlsApi | null>(null);
 
@@ -108,11 +145,9 @@ export default function App() {
   const canvasProfileRef = useRef<HTMLCanvasElement>(null);
   const canvasSectionRef = useRef<HTMLCanvasElement>(null);
 
-  const locale = settings.locale as LocaleId;
-
   useEffect(() => {
-    setLocale(locale);
-  }, [locale]);
+    setLocale("en");
+  }, []);
 
   useEffect(() => {
     if (editMode === "deck") {
@@ -122,6 +157,35 @@ export default function App() {
       setOverlays((o) => ({ ...o, profileBottom: true }));
     }
   }, [editMode]);
+
+  useEffect(() => {
+    setSelectedControlPoint(null);
+    setSelectedControlPointKind(null);
+    setHoveredTarget(null);
+  }, [editMode, sectionIndex, brd]);
+
+  useEffect(() => {
+    if (emptyGuidedStep === null) return;
+    if (emptyGuidedStep === 0) setEditMode("outline");
+    if (emptyGuidedStep === 1) setEditMode("deck");
+    if (emptyGuidedStep === 2) setEditMode("section");
+  }, [emptyGuidedStep]);
+
+  useEffect(() => {
+    const ro = new ResizeObserver(() => setCanvasLayoutNonce((n) => n + 1));
+    const observe = () => {
+      for (const ref of [canvasPlanRef, canvasProfileRef, canvasSectionRef]) {
+        const el = ref.current;
+        if (el) ro.observe(el);
+      }
+    };
+    observe();
+    const id = requestAnimationFrame(observe);
+    return () => {
+      cancelAnimationFrame(id);
+      ro.disconnect();
+    };
+  }, []);
 
   const {
     outlineLowerXy,
@@ -150,9 +214,37 @@ export default function App() {
     bumpBoardRevision,
     bumpCmdNonce,
     setDirty: setIsDirty,
+    onSelectTarget: (t) => {
+      setSelectedControlPoint(t?.index ?? null);
+      setSelectedControlPointKind(t?.point ?? "end");
+    },
+    onHoverTarget: (t) => setHoveredTarget(t),
   });
 
   useWindowCloseGuard(isDirty);
+
+  const markerStateFor = useCallback(
+    (kind: "outline" | "deck" | "bottom" | "section") => {
+      const selected =
+        selectedControlPoint == null
+          ? null
+          : kind === "section"
+            ? editMode === "section"
+              ? { index: selectedControlPoint, point: selectedControlPointKind ?? "end" }
+              : null
+            : editMode === kind
+              ? { index: selectedControlPoint, point: selectedControlPointKind ?? "end" }
+              : null;
+      const hover =
+        hoveredTarget &&
+        hoveredTarget.kind === kind &&
+        (hoveredTarget.kind !== "section" || hoveredTarget.sectionIndex === sectionIndex)
+          ? { index: hoveredTarget.index, point: hoveredTarget.point ?? "end" }
+          : null;
+      return { selected, hover };
+    },
+    [selectedControlPoint, selectedControlPointKind, hoveredTarget, editMode, sectionIndex],
+  );
 
   useEffect(() => {
     const dirtyMark = isDirty ? "• " : "";
@@ -181,6 +273,7 @@ export default function App() {
       outlineUpperXy,
       planBounds,
       overlays,
+      markerStateFor("outline"),
     );
   }, [
     brd,
@@ -188,7 +281,9 @@ export default function App() {
     outlineLowerXy,
     outlineUpperXy,
     overlays,
-    fit2dNonce,
+    markerStateFor,
+    resetViewPlanNonce,
+    canvasLayoutNonce,
     boardRevision,
   ]);
 
@@ -205,6 +300,8 @@ export default function App() {
       bottomXy,
       profileStringerBounds,
       overlays,
+      markerStateFor("deck"),
+      markerStateFor("bottom"),
     );
   }, [
     brd,
@@ -212,7 +309,9 @@ export default function App() {
     bottomXy,
     profileStringerBounds,
     overlays,
-    fit2dNonce,
+    markerStateFor,
+    resetViewProfileNonce,
+    canvasLayoutNonce,
     boardRevision,
   ]);
 
@@ -229,6 +328,7 @@ export default function App() {
       profileXy,
       profileBounds,
       overlays,
+      markerStateFor("section"),
     );
   }, [
     brd,
@@ -236,7 +336,9 @@ export default function App() {
     profileXy,
     profileBounds,
     overlays,
-    fit2dNonce,
+    markerStateFor,
+    resetViewSectionNonce,
+    canvasLayoutNonce,
     boardRevision,
   ]);
 
@@ -266,6 +368,7 @@ export default function App() {
           setBrd(next);
           setPath(path);
           setSectionIndex(firstDrawableCrossSectionIndex(next));
+          setEmptyGuidedStep(null);
           setIsDirty(false);
           pushRecent(path);
           showToast(`Opened ${next.name || path}`, "success");
@@ -302,15 +405,132 @@ export default function App() {
 
   const newBoard = useCallback(async () => {
     if (isDirty && !(await confirmDiscardUnsaved())) return;
-    stack.clear();
-    bumpCmdNonce();
-    setBrd(createStarterBoard());
-    setPath(null);
-    setSectionIndex(0);
-    setIsDirty(false);
-    bumpBoardRevision();
-    showToast("New board", "success");
-  }, [isDirty, showToast, stack]);
+    setNewBoardOpen(true);
+  }, [isDirty]);
+
+  const createNewBoardFromPreset = useCallback(
+    async (preset: NewBoardPreset) => {
+      if (preset === "empty_advanced" || preset === "empty_guided") {
+        const nextBoard = createBlankBoard();
+        stack.clear();
+        bumpCmdNonce();
+        setBrd(nextBoard);
+        setPath(null);
+        setSectionIndex(firstDrawableCrossSectionIndex(nextBoard));
+        setSelectedControlPoint(null);
+        setSelectedControlPointKind(null);
+        setIsDirty(true);
+        setOverlays((o) => ({
+          ...o,
+          grid: true,
+          controlPoints: true,
+          guidePoints: false,
+          profileDeck: true,
+          profileBottom: true,
+        }));
+        if (preset === "empty_guided") {
+          setEmptyGuidedStep(0);
+          setEditMode("outline");
+        } else {
+          setEmptyGuidedStep(null);
+          setEditMode("deck");
+        }
+        setNewBoardOpen(false);
+        bumpBoardRevision();
+        showToast(
+          preset === "empty_guided" ? "Blank board — follow the guided steps" : "Blank board ready",
+          "success",
+        );
+        return;
+      }
+
+      let nextBoard: BezierBoard | null = null;
+
+      const templateFile = TEMPLATE_FILE_BY_PRESET[preset];
+      const publicUrl = `/BoardTemplates/${templateFile}`;
+      try {
+        const response = await fetch(publicUrl, { cache: "no-store" });
+        if (response.ok) {
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          const loaded = new BezierBoard();
+          const result = loadBrdFromBytes(loaded, bytes, publicUrl);
+          if (result === 0) {
+            nextBoard = loaded;
+          }
+        }
+      } catch {
+        // Fall through to Tauri resource/file loading.
+      }
+
+      const resourceRelative = `BoardTemplates/${templateFile}`;
+      if (!nextBoard) {
+        try {
+          const bytes = await readFile(resourceRelative, {
+            baseDir: BaseDirectory.Resource,
+          });
+          const loaded = new BezierBoard();
+          const result = loadBrdFromBytes(loaded, bytes, resourceRelative);
+          if (result === 0) {
+            nextBoard = loaded;
+          }
+        } catch {
+          // Fall through to path-based candidate probing.
+        }
+      }
+
+      if (!nextBoard) {
+        const resourceBase = await resourceDir().catch(() => null);
+        const resolvedResource = await resolveResource(`BoardTemplates/${templateFile}`).catch(
+          () => null,
+        );
+        const candidatePaths = [
+          resolvedResource,
+          resourceBase ? await join(resourceBase, "BoardTemplates", templateFile) : null,
+          `BoardTemplates/${templateFile}`,
+          `../BoardTemplates/${templateFile}`,
+          `../../BoardTemplates/${templateFile}`,
+          `../../../BoardTemplates/${templateFile}`,
+        ].filter((v): v is string => Boolean(v));
+
+        for (const candidate of candidatePaths) {
+          try {
+            const bytes = await readBytesFromPath(candidate);
+            const loaded = new BezierBoard();
+            const result = loadBrdFromBytes(loaded, bytes, candidate);
+            if (result === 0) {
+              nextBoard = loaded;
+              break;
+            }
+          } catch {
+            // Keep trying other candidate template locations.
+          }
+        }
+      }
+
+      if (!nextBoard) {
+        const msg = `Could not locate template file: ${templateFile}`;
+        setFileError(msg);
+        showToast(msg, "error");
+        return;
+      }
+
+      stack.clear();
+      bumpCmdNonce();
+      setBrd(nextBoard);
+      setPath(null);
+      setSectionIndex(firstDrawableCrossSectionIndex(nextBoard));
+      setSelectedControlPoint(null);
+      setSelectedControlPointKind(null);
+      setIsDirty(true);
+      setEmptyGuidedStep(null);
+      setEditMode("deck");
+      setOverlays((o) => ({ ...o, profileDeck: true, profileBottom: true }));
+      setNewBoardOpen(false);
+      bumpBoardRevision();
+      showToast(`New ${preset} board`, "success");
+    },
+    [stack, showToast, bumpCmdNonce, bumpBoardRevision],
+  );
 
   const saveBoardToPath = useCallback(
     async (dest: string): Promise<boolean> => {
@@ -440,14 +660,6 @@ export default function App() {
     [brd, showToast],
   );
 
-  const onLocaleChange = useCallback(
-    (loc: LocaleId) => {
-      setSettings({ locale: loc });
-      setLocale(loc);
-    },
-    [setSettings],
-  );
-
   const doUndo = useCallback(() => {
     stack.undo();
     bumpCmdNonce();
@@ -498,6 +710,320 @@ export default function App() {
     },
     [brd, sectionIndex, stack],
   );
+
+  const duplicateSection = useCallback(() => {
+    const cs = brd.crossSections[sectionIndex];
+    if (!cs) return;
+    const dup = cloneCrossSection(cs);
+    dup.setPosition(cs.getPosition() + 20);
+    const at = Math.min(sectionIndex + 1, brd.crossSections.length);
+    stack.push(new AddCrossSectionCommand(brd, at, dup));
+    bumpCmdNonce();
+    setSectionIndex(at);
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Section duplicated", "success");
+  }, [brd, sectionIndex, stack, showToast]);
+
+  const interpolateSection = useCallback(() => {
+    const a = brd.crossSections[sectionIndex];
+    const b = brd.crossSections[sectionIndex + 1];
+    if (!a || !b) {
+      showToast("Select a section with a following neighbor to interpolate.", "error");
+      return;
+    }
+    const pos = (a.getPosition() + b.getPosition()) * 0.5;
+    const inter = getInterpolatedCrossSectionJava(brd, pos);
+    if (!inter) {
+      showToast("Could not interpolate section at this station.", "error");
+      return;
+    }
+    const at = sectionIndex + 1;
+    stack.push(new AddCrossSectionCommand(brd, at, inter));
+    bumpCmdNonce();
+    setSectionIndex(at);
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Interpolated section inserted", "success");
+  }, [brd, sectionIndex, stack, showToast]);
+
+  const applyProfileShaping = useCallback(
+    (v: {
+      noseRocker: number;
+      tailRocker: number;
+      maxThickness: number;
+      maxThicknessPosPct: number;
+    }) => {
+      const len = getBoardLengthJava(brd);
+      if (!Number.isFinite(len) || len <= 1e-6) {
+        showToast("Outline length is invalid; cannot apply profile shaping.", "error");
+        return;
+      }
+      const xr = Math.max(0.1, Math.min(0.9, v.maxThicknessPosPct / 100));
+      const xPeak = len * xr;
+      const q = (x: number, x0: number, y0: number, x1: number, y1: number, x2: number, y2: number) => {
+        const d01 = (x0 - x1) * (x0 - x2);
+        const d11 = (x1 - x0) * (x1 - x2);
+        const d21 = (x2 - x0) * (x2 - x1);
+        if (Math.abs(d01) < 1e-9 || Math.abs(d11) < 1e-9 || Math.abs(d21) < 1e-9) return y0;
+        return (
+          y0 * ((x - x1) * (x - x2)) / d01 +
+          y1 * ((x - x0) * (x - x2)) / d11 +
+          y2 * ((x - x0) * (x - x1)) / d21
+        );
+      };
+      const bottomY = (x: number) => q(x, 0, v.tailRocker, len * 0.5, 0, len, v.noseRocker);
+      const thicknessY = (x: number) =>
+        Math.max(
+          2,
+          q(x, 0, 2, xPeak, Math.max(v.maxThickness, 5), len, 2),
+        );
+
+      const applySplineY = (
+        sp: BezierBoard["deck"] | BezierBoard["bottom"],
+        fn: (x: number) => number,
+      ) => {
+        for (let i = 0; i < sp.getNrOfControlPoints(); i++) {
+          const k = sp.getControlPointOrThrow(i);
+          const target = fn(k.getEndPoint().x);
+          const dy = target - k.getEndPoint().y;
+          for (let j = 0; j < 3; j++) {
+            k.points[j]!.y += dy;
+          }
+        }
+      };
+      applySplineY(brd.bottom, bottomY);
+      applySplineY(brd.deck, (x) => bottomY(x) + thicknessY(x));
+      brd.checkAndFixContinousy(false, true);
+      brd.setLocks();
+      setOverlays((o) => ({ ...o, profileDeck: true, profileBottom: true }));
+      setEditMode("deck");
+      setIsDirty(true);
+      bumpBoardRevision();
+      showToast("Profile/rocker shaping applied", "success");
+    },
+    [brd, showToast],
+  );
+
+  const addPairedProfilePoint = useCallback(() => {
+    const nd = brd.deck.getNrOfControlPoints();
+    const nb = brd.bottom.getNrOfControlPoints();
+    if (nd < 2 || nb < 2) {
+      showToast("Deck and bottom need at least two points.", "error");
+      return;
+    }
+    const i = Math.max(
+      0,
+      Math.min(selectedControlPoint ?? Math.min(nd, nb) - 2, Math.min(nd, nb) - 2),
+    );
+    stack.push(new InsertControlPointCommand(brd, { kind: "deck" }, i));
+    stack.push(new InsertControlPointCommand(brd, { kind: "bottom" }, i));
+    setOverlays((o) => ({ ...o, profileDeck: true, profileBottom: true }));
+    setEditMode("deck");
+    setSelectedControlPoint(i + 1);
+    setIsDirty(true);
+    bumpCmdNonce();
+    bumpBoardRevision();
+    showToast("Paired deck/bottom point added", "success");
+  }, [brd, selectedControlPoint, stack, showToast]);
+
+  const moveSectionEarlier = useCallback(() => {
+    if (sectionIndex <= 0) return;
+    stack.push(new MoveCrossSectionCommand(brd, sectionIndex, sectionIndex - 1));
+    bumpCmdNonce();
+    setSectionIndex(sectionIndex - 1);
+    setIsDirty(true);
+    bumpBoardRevision();
+  }, [brd, sectionIndex, stack]);
+
+  const moveSectionLater = useCallback(() => {
+    if (sectionIndex >= brd.crossSections.length - 1) return;
+    stack.push(new MoveCrossSectionCommand(brd, sectionIndex, sectionIndex + 1));
+    bumpCmdNonce();
+    setSectionIndex(sectionIndex + 1);
+    setIsDirty(true);
+    bumpBoardRevision();
+  }, [brd, sectionIndex, stack]);
+
+  const addSectionTemplate = useCallback(
+    (template: "current" | "soft" | "hard") => {
+      const cs = createDefaultCrossSection(brd);
+      const sp = cs.getBezierSpline();
+      if (template === "soft") {
+        applyRailShapeTemplate(sp, "soft");
+      } else if (template === "hard") {
+        applyRailShapeTemplate(sp, "hard");
+      }
+      const insertAt = Math.min(sectionIndex + 1, brd.crossSections.length);
+      stack.push(new AddCrossSectionCommand(brd, insertAt, cs));
+      bumpCmdNonce();
+      setSectionIndex(insertAt);
+      setIsDirty(true);
+      bumpBoardRevision();
+      showToast("Template section added", "success");
+    },
+    [brd, sectionIndex, stack, showToast],
+  );
+
+  const currentSplineTarget = useCallback((): SplineTarget => {
+    if (editMode === "outline") return { kind: "outline" };
+    if (editMode === "deck") return { kind: "deck" };
+    if (editMode === "bottom") return { kind: "bottom" };
+    return { kind: "section", sectionIndex };
+  }, [editMode, sectionIndex]);
+
+  const currentSplinePointCount = useCallback((): number => {
+    const t = currentSplineTarget();
+    if (t.kind === "outline") return brd.outline.getNrOfControlPoints();
+    if (t.kind === "deck") return brd.deck.getNrOfControlPoints();
+    if (t.kind === "bottom") return brd.bottom.getNrOfControlPoints();
+    const cs = brd.crossSections[t.sectionIndex];
+    return cs ? cs.getBezierSpline().getNrOfControlPoints() : 0;
+  }, [brd, currentSplineTarget]);
+
+  const selectedTarget = useCallback((): SplineEditTarget | null => {
+    const i = selectedControlPoint;
+    if (i == null) return null;
+    const t = currentSplineTarget();
+    if (t.kind === "section") return { kind: "section", sectionIndex: t.sectionIndex, index: i };
+    return { kind: t.kind, index: i };
+  }, [selectedControlPoint, currentSplineTarget]);
+
+  const addControlPoint = useCallback(() => {
+    const n = currentSplinePointCount();
+    if (n < 2) {
+      showToast("Need at least two points in the spline to insert a new point.", "error");
+      return;
+    }
+    const selected = selectedControlPoint ?? 0;
+    const i = Math.max(0, Math.min(selected, n - 2));
+    stack.push(new InsertControlPointCommand(brd, currentSplineTarget(), i));
+    bumpCmdNonce();
+    setSelectedControlPoint(i + 1);
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Control point added", "success");
+  }, [
+    brd,
+    currentSplinePointCount,
+    currentSplineTarget,
+    selectedControlPoint,
+    stack,
+    showToast,
+  ]);
+
+  const removeControlPoint = useCallback(() => {
+    const n = currentSplinePointCount();
+    if (n <= 2) {
+      showToast("Keep at least two control points in each spline.", "error");
+      return;
+    }
+    const selected = selectedControlPoint ?? n - 1;
+    const i = Math.max(0, Math.min(selected, n - 1));
+    const t = currentSplineTarget();
+    if ((t.kind === "outline" || t.kind === "deck" || t.kind === "bottom") && (i === 0 || i === n - 1)) {
+      showToast("Nose and tail points are fixed. Select an interior point to remove.", "error");
+      return;
+    }
+    stack.push(new RemoveControlPointCommand(brd, currentSplineTarget(), i));
+    bumpCmdNonce();
+    setSelectedControlPoint(Math.max(0, Math.min(i - 1, n - 2)));
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Control point removed", "success");
+  }, [
+    brd,
+    currentSplinePointCount,
+    currentSplineTarget,
+    selectedControlPoint,
+    stack,
+    showToast,
+  ]);
+
+  const toggleContinuity = useCallback(() => {
+    const t = selectedTarget();
+    if (!t) {
+      showToast("Select a control point first.", "error");
+      return;
+    }
+    stack.push(new SetControlPointContinuityCommand(brd, [t]));
+    bumpCmdNonce();
+    setIsDirty(true);
+    bumpBoardRevision();
+    const k = getKnot(brd, t);
+    showToast(k?.isContinous() ? "Continuity enabled" : "Continuity disabled", "success");
+  }, [selectedTarget, stack, brd, showToast]);
+
+  const resetCurrentSpline = useCallback(() => {
+    stack.push(new ResetSplineToLineCommand(brd, currentSplineTarget()));
+    bumpCmdNonce();
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Current spline reset to a recoverable baseline.", "success");
+  }, [stack, brd, currentSplineTarget, showToast]);
+
+  const computeGeometryIssues = useCallback((): string[] => {
+    const issues: string[] = [];
+    const checks: Array<{ name: string; xs: number[] }> = [];
+    const collectX = (n: number, getX: (i: number) => number): number[] =>
+      Array.from({ length: n }, (_, i) => getX(i));
+    checks.push({
+      name: "outline",
+      xs: collectX(brd.outline.getNrOfControlPoints(), (i) =>
+        brd.outline.getControlPointOrThrow(i).getEndPoint().x,
+      ),
+    });
+    checks.push({
+      name: "deck",
+      xs: collectX(brd.deck.getNrOfControlPoints(), (i) =>
+        brd.deck.getControlPointOrThrow(i).getEndPoint().x,
+      ),
+    });
+    checks.push({
+      name: "bottom",
+      xs: collectX(brd.bottom.getNrOfControlPoints(), (i) =>
+        brd.bottom.getControlPointOrThrow(i).getEndPoint().x,
+      ),
+    });
+    for (let si = 0; si < brd.crossSections.length; si++) {
+      const sp = brd.crossSections[si]!.getBezierSpline();
+      checks.push({
+        name: `section #${si + 1}`,
+        xs: collectX(sp.getNrOfControlPoints(), (i) => sp.getControlPointOrThrow(i).getEndPoint().x),
+      });
+    }
+    for (const c of checks) {
+      for (let i = 0; i < c.xs.length; i++) {
+        const v = c.xs[i]!;
+        if (!Number.isFinite(v)) {
+          issues.push(`${c.name}: non-finite coordinate at point #${i + 1}.`);
+        }
+        if (i > 0 && v <= c.xs[i - 1]!) {
+          issues.push(`${c.name}: point #${i} and #${i + 1} are not strictly increasing along X.`);
+        }
+      }
+    }
+    for (let i = 1; i < brd.crossSections.length; i++) {
+      if (brd.crossSections[i]!.getPosition() <= brd.crossSections[i - 1]!.getPosition()) {
+        issues.push("Cross-sections are out of station order.");
+        break;
+      }
+    }
+    return Array.from(new Set(issues));
+  }, [brd]);
+
+  const fixSectionOrder = useCallback(() => {
+    brd.crossSections.sort((a, b) => a.getPosition() - b.getPosition());
+    setSectionIndex((i) => Math.max(0, Math.min(i, brd.crossSections.length - 1)));
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Sections sorted by station", "success");
+  }, [brd, showToast]);
+
+  useEffect(() => {
+    const issues = computeGeometryIssues();
+    setGeometryWarning(issues.length > 0 ? issues[0]! : null);
+  }, [computeGeometryIssues, boardRevision]);
 
   const updateMetadata = useCallback(
     (patch: Partial<Pick<BezierBoard, "name" | "designer" | "comments" | "author">>) => {
@@ -551,6 +1077,31 @@ export default function App() {
         setExportOpen(true);
         return;
       }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && k === "a") {
+        e.preventDefault();
+        addControlPoint();
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        removeControlPoint();
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && k === "c") {
+        e.preventDefault();
+        toggleContinuity();
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && e.shiftKey && k === "d") {
+        e.preventDefault();
+        duplicateSection();
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && e.shiftKey && k === "i") {
+        e.preventDefault();
+        interpolateSection();
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       if (k === "o") {
@@ -580,10 +1131,41 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openBoard, saveBoard, saveBoardAs, stack, doUndo, doRedo, isDirty]);
+  }, [
+    openBoard,
+    saveBoard,
+    saveBoardAs,
+    stack,
+    doUndo,
+    doRedo,
+    isDirty,
+    addControlPoint,
+    removeControlPoint,
+    toggleContinuity,
+    duplicateSection,
+    interpolateSection,
+  ]);
 
   const canUndo = stack.canUndo();
   const canRedo = stack.canRedo();
+  const editModeLabel =
+    editMode === "outline"
+      ? "Outline"
+      : editMode === "deck"
+        ? "Deck profile"
+        : editMode === "bottom"
+          ? "Bottom profile"
+          : `Section #${sectionIndex + 1}`;
+  const selectedPointLabel =
+    selectedControlPoint == null
+      ? "None"
+      : `#${selectedControlPoint + 1}${
+          selectedControlPointKind ? ` (${selectedControlPointKind})` : ""
+        }`;
+  const hoveredPointLabel =
+    hoveredTarget == null
+      ? "None"
+      : `#${hoveredTarget.index + 1}${hoveredTarget.point ? ` (${hoveredTarget.point})` : ""}`;
 
   return (
     <div className="app-shell">
@@ -599,10 +1181,18 @@ export default function App() {
         onRedo={doRedo}
         canUndo={canUndo}
         canRedo={canRedo}
-        onFit2d={() => setFit2dNonce((n) => n + 1)}
+        onFit2d={() => {
+          setResetViewPlanNonce((n) => n + 1);
+          setResetViewProfileNonce((n) => n + 1);
+          setResetViewSectionNonce((n) => n + 1);
+        }}
         onReset3d={() => setViewReset3dNonce((n) => n + 1)}
-        locale={locale}
-        onLocaleChange={onLocaleChange}
+        onResetAllViews={() => {
+          setResetViewPlanNonce((n) => n + 1);
+          setResetViewProfileNonce((n) => n + 1);
+          setResetViewSectionNonce((n) => n + 1);
+          setViewReset3dNonce((n) => n + 1);
+        }}
         theme={settings.theme}
         onThemeChange={(theme) => setSettings({ theme })}
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
@@ -621,18 +1211,70 @@ export default function App() {
         onAddSection={addSection}
         onRemoveSection={removeSection}
         onSetSectionStation={setSectionStation}
+        onDuplicateSection={duplicateSection}
+        onInterpolateSection={interpolateSection}
+        onMoveSectionEarlier={moveSectionEarlier}
+        onMoveSectionLater={moveSectionLater}
+        onAddSectionTemplate={addSectionTemplate}
+        selectedControlPoint={selectedControlPoint}
+        onAddControlPoint={addControlPoint}
+        onRemoveControlPoint={removeControlPoint}
+        canRemoveControlPoint={currentSplinePointCount() > 2}
+        onToggleContinuity={toggleContinuity}
+        onResetCurrentSpline={resetCurrentSpline}
+        validationIssues={computeGeometryIssues()}
+        onFixSectionOrder={fixSectionOrder}
+        onApplyProfileShaping={applyProfileShaping}
+        onAddPairedProfilePoint={addPairedProfilePoint}
         onMetadataChange={updateMetadata}
         onUnitsChange={setCurrentUnits}
       />
 
       <main className="workspace">
+        <section className="workspace-context" aria-label="Current editing context">
+          <span className="context-chip context-chip--active">
+            Editing target: <strong>{editModeLabel}</strong>
+          </span>
+          <span className="context-chip">
+            Selection: <strong>{selectedPointLabel}</strong>
+          </span>
+          <span className="context-chip">
+            Hover: <strong>{hoveredPointLabel}</strong>
+          </span>
+          <span className="context-chip">
+            Station: <strong>#{sectionIndex + 1}</strong>
+          </span>
+          <span className="context-chip">
+            Units: <strong>{brd.currentUnits === 0 ? "mm" : brd.currentUnits === 1 ? "cm" : "in"}</strong>
+          </span>
+          <span className="context-chip">
+            Status: <strong>{isDirty ? "Unsaved changes" : "Saved"}</strong>
+          </span>
+        </section>
         <ErrorBanner
           title={t("READBRDFAILEDTITLE_STR")}
           message={fileError}
           onDismiss={() => setFileError(null)}
         />
+        <ErrorBanner
+          title="Geometry warning"
+          message={geometryWarning}
+          tone="warning"
+          onDismiss={() => setGeometryWarning(null)}
+        />
+        {emptyGuidedStep !== null ? (
+          <EmptyGuidedBanner
+            step={emptyGuidedStep}
+            onNext={() => setEmptyGuidedStep((s) => (s === null ? s : Math.min(s + 1, 2)))}
+            onDismiss={() => setEmptyGuidedStep(null)}
+          />
+        ) : null}
         <div className="workspace__main">
           <WorkspacePanels
+            onResetPlanView={() => setResetViewPlanNonce((n) => n + 1)}
+            onResetProfileView={() => setResetViewProfileNonce((n) => n + 1)}
+            onResetSectionView={() => setResetViewSectionNonce((n) => n + 1)}
+            onReset3dView={() => setViewReset3dNonce((n) => n + 1)}
             planCanvas={
               <canvas
                 ref={canvasPlanRef}
@@ -695,6 +1337,12 @@ export default function App() {
       </main>
 
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+
+      <NewBoardModal
+        open={newBoardOpen}
+        onClose={() => setNewBoardOpen(false)}
+        onCreate={createNewBoardFromPreset}
+      />
 
       <KeyboardShortcutsModal
         open={shortcutsOpen}

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 export type DesktopExportFormat =
   | "stl-binary"
@@ -26,26 +27,20 @@ const FORMATS: { id: DesktopExportFormat; label: string; hint: string }[] = [
 export function ExportModal({ open, onClose, onExport }: ExportModalProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const [format, setFormat] = useState<DesktopExportFormat>("stl-binary");
-
-  useEffect(() => {
-    if (!open) return;
-    closeBtnRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const [isBusy, setIsBusy] = useState(false);
+  const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
 
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className="modal-backdrop" role="presentation" onClick={() => (!isBusy ? onClose() : null)}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-title"
         className="modal-dialog modal-dialog--wide"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-dialog__header">
@@ -55,9 +50,10 @@ export function ExportModal({ open, onClose, onExport }: ExportModalProps) {
           <button
             ref={closeBtnRef}
             type="button"
-            className="modal-dialog__close"
+            className="modal-dialog__close icon-btn"
             onClick={onClose}
             aria-label="Close"
+            disabled={isBusy}
           >
             ×
           </button>
@@ -79,6 +75,7 @@ export function ExportModal({ open, onClose, onExport }: ExportModalProps) {
                     value={f.id}
                     checked={format === f.id}
                     onChange={() => setFormat(f.id)}
+                    disabled={isBusy}
                   />
                   <span className="export-format-row__text">
                     <span className="export-format-row__label">{f.label}</span>
@@ -90,15 +87,23 @@ export function ExportModal({ open, onClose, onExport }: ExportModalProps) {
           </fieldset>
         </div>
         <div className="modal-dialog__footer modal-dialog__footer--split">
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={isBusy}>
             Cancel
           </button>
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => void onExport(format)}
+            disabled={isBusy}
+            onClick={async () => {
+              setIsBusy(true);
+              try {
+                await onExport(format);
+              } finally {
+                setIsBusy(false);
+              }
+            }}
           >
-            Continue…
+            {isBusy ? "Exporting..." : "Continue..."}
           </button>
         </div>
       </div>

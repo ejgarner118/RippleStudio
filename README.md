@@ -30,6 +30,15 @@ npm install
 - **`packages/boardcad-core`** — `.brd` I/O, geometry, mesh/SVG export, i18n, settings model.
 - **`apps/boardcad-desktop`** — **Ripple Studio** Tauri shell (`ripple-desktop` npm workspace).
 
+## Authoring features (current)
+
+- Spline control-point authoring: add/remove points, tangent-handle drag, continuity toggle.
+- Section suite: add/duplicate/interpolate/reorder sections, station editing, quick templates.
+- New-board wizard presets: standard, shortboard, fish, and longboard.
+- Presets are loaded from `BoardTemplates/*.brd` (bundled into release artifacts).
+- Validation + recovery: geometry warnings, section-order fix, and reset-current-spline fallback.
+- Surf-specific shaping: rocker/thickness profile shaping panel, paired deck+bottom point insertion, and Shift-drag snap for controlled shaping.
+
 ## Documentation
 
 - **`docs/BRD_FILE_FORMAT.md`** — `.brd` property reference for implementers.

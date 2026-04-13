@@ -1,13 +1,19 @@
 type ErrorBannerProps = {
   message: string | null;
   title?: string;
+  tone?: "error" | "warning";
   onDismiss: () => void;
 };
 
-export function ErrorBanner({ message, title = "Something went wrong", onDismiss }: ErrorBannerProps) {
+export function ErrorBanner({
+  message,
+  title = "Something went wrong",
+  tone = "error",
+  onDismiss,
+}: ErrorBannerProps) {
   if (!message) return null;
   return (
-    <div className="banner banner--error" role="alert">
+    <div className={`banner banner--${tone}`} role={tone === "error" ? "alert" : "status"}>
       <div className="banner__content">
         <strong className="banner__title">{title}</strong>
         <p className="banner__text">{message}</p>

@@ -1,6 +1,10 @@
 import type { BezierSpline, BBox2D } from "@boardcad/core";
 
 export type FitTransform = { s: number; ox: number; oy: number };
+export type ControlPointMarkerState = {
+  selected?: { index: number; point?: "end" | "prev" | "next" } | null;
+  hover?: { index: number; point?: "end" | "prev" | "next" } | null;
+};
 
 export function computeFit(
   b: BBox2D,
@@ -91,13 +95,61 @@ export function drawControlPointsMirroredOutline(
   spline: BezierSpline,
   tf: FitTransform,
   ch: number,
+  markerState?: ControlPointMarkerState,
 ): void {
   const n = spline.getNrOfControlPoints();
+  ctx.strokeStyle = "#8f4d00";
+  ctx.lineWidth = 1;
   for (let i = 0; i < n; i++) {
     const k = spline.getControlPoint(i);
     if (!k) continue;
-    const p = k.getEndPoint();
-    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 4, "#c01c28", true);
+    const p0 = k.getEndPoint();
+    const p1 = k.getTangentToPrev();
+    const p2 = k.getTangentToNext();
+    const yFactors = [1, -1] as const;
+    for (const ySign of yFactors) {
+      const [x0, y0] = toCanvas(p0.x, p0.y * ySign, tf, ch);
+      const [x1, y1] = toCanvas(p1.x, p1.y * ySign, tf, ch);
+      const [x2, y2] = toCanvas(p2.x, p2.y * ySign, tf, ch);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    const selected = markerState?.selected?.index === i ? markerState.selected : null;
+    const hover = markerState?.hover?.index === i ? markerState.hover : null;
+    drawMirroredDisks(
+      ctx,
+      p1.x,
+      p1.y,
+      tf,
+      ch,
+      selected?.point === "prev" ? 4 : hover?.point === "prev" ? 3.5 : 2.5,
+      selected?.point === "prev" ? "#f59e0b" : hover?.point === "prev" ? "#fbbf24" : "#f6ad55",
+      true,
+    );
+    drawMirroredDisks(
+      ctx,
+      p2.x,
+      p2.y,
+      tf,
+      ch,
+      selected?.point === "next" ? 4 : hover?.point === "next" ? 3.5 : 2.5,
+      selected?.point === "next" ? "#f59e0b" : hover?.point === "next" ? "#fbbf24" : "#f6ad55",
+      true,
+    );
+    drawMirroredDisks(
+      ctx,
+      p0.x,
+      p0.y,
+      tf,
+      ch,
+      selected?.point === "end" ? 6 : hover?.point === "end" ? 5 : 4,
+      selected?.point === "end" ? "#2563eb" : hover?.point === "end" ? "#3b82f6" : "#c01c28",
+      true,
+    );
   }
 }
 
@@ -117,13 +169,58 @@ export function drawControlPoints(
   spline: BezierSpline,
   tf: FitTransform,
   ch: number,
+  markerState?: ControlPointMarkerState,
 ): void {
   const n = spline.getNrOfControlPoints();
+  ctx.strokeStyle = "#8f4d00";
+  ctx.lineWidth = 1;
   for (let i = 0; i < n; i++) {
     const k = spline.getControlPoint(i);
     if (!k) continue;
-    const p = k.getEndPoint();
-    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 4, "#c01c28", false);
+    const p0 = k.getEndPoint();
+    const p1 = k.getTangentToPrev();
+    const p2 = k.getTangentToNext();
+    const [x0, y0] = toCanvas(p0.x, p0.y, tf, ch);
+    const [x1, y1] = toCanvas(p1.x, p1.y, tf, ch);
+    const [x2, y2] = toCanvas(p2.x, p2.y, tf, ch);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    const selected = markerState?.selected?.index === i ? markerState.selected : null;
+    const hover = markerState?.hover?.index === i ? markerState.hover : null;
+    drawMirroredDisks(
+      ctx,
+      p1.x,
+      p1.y,
+      tf,
+      ch,
+      selected?.point === "prev" ? 4 : hover?.point === "prev" ? 3.5 : 2.5,
+      selected?.point === "prev" ? "#f59e0b" : hover?.point === "prev" ? "#fbbf24" : "#f6ad55",
+      false,
+    );
+    drawMirroredDisks(
+      ctx,
+      p2.x,
+      p2.y,
+      tf,
+      ch,
+      selected?.point === "next" ? 4 : hover?.point === "next" ? 3.5 : 2.5,
+      selected?.point === "next" ? "#f59e0b" : hover?.point === "next" ? "#fbbf24" : "#f6ad55",
+      false,
+    );
+    drawMirroredDisks(
+      ctx,
+      p0.x,
+      p0.y,
+      tf,
+      ch,
+      selected?.point === "end" ? 6 : hover?.point === "end" ? 5 : 4,
+      selected?.point === "end" ? "#2563eb" : hover?.point === "end" ? "#3b82f6" : "#c01c28",
+      false,
+    );
   }
 }
 
@@ -138,23 +235,34 @@ export function drawGuidePoints(
   }
 }
 
-export function drawPlanGrid(
+/** Grid in board units (mm) so screen spacing matches the shape scale (square in world space). */
+export function drawMetricGrid(
   ctx: CanvasRenderingContext2D,
-  cw: number,
+  tf: FitTransform,
   ch: number,
-  step = 40,
+  bounds: BBox2D,
+  stepMm = 50,
 ): void {
   ctx.strokeStyle = "#ddd";
-  for (let x = 0; x < cw; x += step) {
+  ctx.lineWidth = 1;
+  const loX = Math.floor(bounds.minX / stepMm) * stepMm;
+  const hiX = Math.ceil(bounds.maxX / stepMm) * stepMm;
+  const loY = Math.floor(bounds.minY / stepMm) * stepMm;
+  const hiY = Math.ceil(bounds.maxY / stepMm) * stepMm;
+  for (let wx = loX; wx <= hiX + 1e-6; wx += stepMm) {
+    const [x0, y0] = toCanvas(wx, bounds.minY, tf, ch);
+    const [x1, y1] = toCanvas(wx, bounds.maxY, tf, ch);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, ch);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
     ctx.stroke();
   }
-  for (let y = 0; y < ch; y += step) {
+  for (let wy = loY; wy <= hiY + 1e-6; wy += stepMm) {
+    const [x0, y0] = toCanvas(bounds.minX, wy, tf, ch);
+    const [x1, y1] = toCanvas(bounds.maxX, wy, tf, ch);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(cw, y);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
     ctx.stroke();
   }
 }

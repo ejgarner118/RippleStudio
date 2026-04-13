@@ -2,10 +2,11 @@ import type { BezierBoard, BBox2D } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
 import { PLAN_PAD_PX } from "../constants";
 import {
+  type ControlPointMarkerState,
   computeFit,
   drawControlPointsMirroredOutline,
   drawGuidePointsMirrored,
-  drawPlanGrid,
+  drawMetricGrid,
   strokePolyline,
 } from "./draw";
 
@@ -18,16 +19,17 @@ export function renderPlanView(
   outlineUpperXy: Float32Array,
   planBounds: BBox2D | null,
   overlays: OverlayState,
+  markerState?: ControlPointMarkerState,
 ): void {
   ctx.fillStyle = "#f4f4f8";
   ctx.fillRect(0, 0, cw, ch);
 
-  if (overlays.grid) {
-    drawPlanGrid(ctx, cw, ch);
-  }
-
   if (!planBounds) return;
   const tf = computeFit(planBounds, cw, ch, PLAN_PAD_PX);
+
+  if (overlays.grid) {
+    drawMetricGrid(ctx, tf, ch, planBounds, 50);
+  }
 
   if (overlays.ghost) {
     ctx.save();
@@ -54,6 +56,6 @@ export function renderPlanView(
     drawGuidePointsMirrored(ctx, brd.outlineGuidePoints, tf, ch);
   }
   if (overlays.controlPoints) {
-    drawControlPointsMirroredOutline(ctx, brd.outline, tf, ch);
+    drawControlPointsMirroredOutline(ctx, brd.outline, tf, ch, markerState);
   }
 }

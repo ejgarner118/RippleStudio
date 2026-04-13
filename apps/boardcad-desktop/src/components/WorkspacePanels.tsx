@@ -4,19 +4,33 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 function PanelChrome({
   title,
   hint,
+  onResetView,
+  resetLabel = "Reset view",
   children,
 }: {
   title: string;
   hint?: string;
+  onResetView?: () => void;
+  resetLabel?: string;
   children: ReactNode;
 }) {
   return (
     <section className="panel">
       <header className="panel__header">
-        <div>
+        <div className="panel__header-main">
           <h2 className="panel__title">{title}</h2>
           {hint ? <p className="panel__hint">{hint}</p> : null}
         </div>
+        {onResetView ? (
+          <button
+            type="button"
+            className="btn btn--panel-reset"
+            onClick={onResetView}
+            title={resetLabel}
+          >
+            {resetLabel}
+          </button>
+        ) : null}
       </header>
       <div className="panel__body">{children}</div>
     </section>
@@ -31,6 +45,10 @@ type WorkspacePanelsProps = {
   profileCanvas: ReactNode;
   sectionCanvas: ReactNode;
   threeCanvas: ReactNode;
+  onResetPlanView?: () => void;
+  onResetProfileView?: () => void;
+  onResetSectionView?: () => void;
+  onReset3dView?: () => void;
 };
 
 export function WorkspacePanels({
@@ -38,6 +56,10 @@ export function WorkspacePanels({
   profileCanvas,
   sectionCanvas,
   threeCanvas,
+  onResetPlanView,
+  onResetProfileView,
+  onResetSectionView,
+  onReset3dView,
 }: WorkspacePanelsProps) {
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: GROUP_ID,
@@ -62,6 +84,7 @@ export function WorkspacePanels({
         <PanelChrome
           title="Plan"
           hint="Half-outline from the file and mirrored rail (full board footprint)."
+          onResetView={onResetPlanView}
         >
           {planCanvas}
         </PanelChrome>
@@ -76,6 +99,7 @@ export function WorkspacePanels({
         <PanelChrome
           title="Profile"
           hint="Deck and bottom: length versus rocker (side view)."
+          onResetView={onResetProfileView}
         >
           {profileCanvas}
         </PanelChrome>
@@ -90,6 +114,7 @@ export function WorkspacePanels({
         <PanelChrome
           title="Cross-section"
           hint="Rail shape at the selected station along the board."
+          onResetView={onResetSectionView}
         >
           {sectionCanvas}
         </PanelChrome>
@@ -103,7 +128,8 @@ export function WorkspacePanels({
       >
         <PanelChrome
           title="3D preview"
-          hint="Orbit with pointer · scroll to zoom · loft when sections allow."
+          hint="Left drag: orbit · Right drag: pan · Middle or wheel: zoom · Loft when enabled in sidebar."
+          onResetView={onReset3dView}
         >
           {threeCanvas}
         </PanelChrome>

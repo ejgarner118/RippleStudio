@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { APP_DISPLAY_NAME, APP_VERSION_LABEL } from "../constants/brand";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 type AboutModalProps = {
   open: boolean;
@@ -8,16 +9,7 @@ type AboutModalProps = {
 
 export function AboutModal({ open, onClose }: AboutModalProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    closeBtnRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
 
   if (!open) return null;
 
@@ -28,10 +20,12 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="about-title"
         className="modal-dialog"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-dialog__header">
@@ -41,7 +35,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
           <button
             ref={closeBtnRef}
             type="button"
-            className="modal-dialog__close"
+            className="modal-dialog__close icon-btn"
             onClick={onClose}
             aria-label="Close"
           >

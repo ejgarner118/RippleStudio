@@ -4,10 +4,14 @@ import {
   MoveControlPointsCommand,
   applyKnotSnapshot,
   getKnot,
+  isProfileStringerEndPair,
   knotSnapshot,
   pairedBottomIndexForDeck,
   pairedDeckIndexForBottom,
+  stabilizeEditTargetSpline,
+  syncStringerSlaveFromMaster,
   translateKnotBy,
+  translateKnotByMasked,
   type KnotMoveEdit,
   type SplineEditTarget,
 } from "@boardcad/core";
@@ -29,17 +33,35 @@ function buildDragEdits(board: BezierBoard, target: SplineEditTarget): DragEdit[
     out.push({ target: t, before: knotSnapshot(k) });
   };
   push(target);
-  if (target.kind === "deck") {
+  const isEndAnchor = (target.point ?? "end") === "end";
+  if (isEndAnchor && target.kind === "deck") {
     const j = pairedBottomIndexForDeck(board, target.index);
-    if (j != null) push({ kind: "bottom", index: j });
+    if (j != null) push({ kind: "bottom", index: j, point: "end" });
   }
-  if (target.kind === "bottom") {
+  if (isEndAnchor && target.kind === "bottom") {
     const j = pairedDeckIndexForBottom(board, target.index);
-    if (j != null) push({ kind: "deck", index: j });
+    if (j != null) push({ kind: "deck", index: j, point: "end" });
   }
   return out;
 }
 
+function stabilizeKeysForTargets(targets: SplineEditTarget[], brd: BezierBoard): void {
+  const stabilized = new Set<string>();
+  for (const target of targets) {
+    const key =
+      target.kind === "section" ? `section:${target.sectionIndex}` : target.kind;
+    if (!stabilized.has(key)) {
+      stabilizeEditTargetSpline(brd, target);
+      stabilized.add(key);
+    }
+  }
+}
+
+/**
+ * Profile stringer (deck/bottom): Java uses masked deltas on tips and mates the opposite stringer.
+ * Outline / sections: full translation (masks on outline ends are 0,0 — would block moves; those
+ * splines are edited without masked translation here).
+ */
 function applyDragDelta(
   brd: BezierBoard,
   edits: DragEdit[],
@@ -48,12 +70,48 @@ function applyDragDelta(
 ): void {
   for (const { target, before } of edits) {
     const k = getKnot(brd, target);
-    if (!k) continue;
-    applyKnotSnapshot(k, before);
-    translateKnotBy(k, dx, dy);
+    if (k) applyKnotSnapshot(k, before);
   }
-  brd.checkAndFixContinousy(false, true);
-  brd.setLocks();
+
+  if (edits.length === 0) return;
+
+  const targets = edits.map((e) => e.target);
+  if (isProfileStringerEndPair(brd, targets)) {
+    const primary = edits[0]!;
+    const secondary = edits[1]!;
+    const k = getKnot(brd, primary.target);
+    const sk = getKnot(brd, secondary.target);
+    if (!k || !sk) return;
+    const { xDiff, yDiff } = translateKnotByMasked(k, dx, dy);
+    syncStringerSlaveFromMaster(k, sk, xDiff, yDiff);
+    stabilizeKeysForTargets([primary.target, secondary.target], brd);
+    return;
+  }
+
+  for (const { target } of edits) {
+    const k = getKnot(brd, target);
+    if (!k) continue;
+    const pointKind = target.point ?? "end";
+    if (pointKind === "end") {
+      if (target.kind === "deck" || target.kind === "bottom") {
+        translateKnotByMasked(k, dx, dy);
+      } else {
+        translateKnotBy(k, dx, dy);
+      }
+    } else {
+      const pi = pointKind === "prev" ? 1 : 2;
+      const oi = pointKind === "prev" ? 2 : 1;
+      k.points[pi]!.x += dx;
+      k.points[pi]!.y += dy;
+      if (k.isContinous()) {
+        const ex = k.points[0]!.x;
+        const ey = k.points[0]!.y;
+        k.points[oi]!.x = ex - (k.points[pi]!.x - ex);
+        k.points[oi]!.y = ey - (k.points[pi]!.y - ey);
+      }
+    }
+    stabilizeEditTargetSpline(brd, target);
+  }
 }
 
 function restoreDragEdits(brd: BezierBoard, edits: DragEdit[]): void {
@@ -94,6 +152,8 @@ export function useBoardCanvasEditing(opts: {
   bumpBoardRevision: () => void;
   bumpCmdNonce: () => void;
   setDirty: (v: boolean) => void;
+  onSelectTarget: (t: SplineEditTarget | null) => void;
+  onHoverTarget: (t: SplineEditTarget | null) => void;
 }) {
   const {
     brd,
@@ -109,6 +169,8 @@ export function useBoardCanvasEditing(opts: {
     bumpBoardRevision,
     bumpCmdNonce,
     setDirty,
+    onSelectTarget,
+    onHoverTarget,
   } = opts;
 
   const dragRef = useRef<DragRef>(null);
@@ -146,13 +208,7 @@ export function useBoardCanvasEditing(opts: {
         bumpBoardRevision();
       }
     },
-    [
-      brd,
-      stack,
-      bumpBoardRevision,
-      bumpCmdNonce,
-      setDirty,
-    ],
+    [brd, stack, bumpBoardRevision, bumpCmdNonce, setDirty],
   );
 
   const onPlanPointerDown = useCallback(
@@ -170,7 +226,13 @@ export function useBoardCanvasEditing(opts: {
         hitRadiusBoard(c.tf),
         overlays,
       );
-      if (!t) return;
+      if (!t) {
+        onSelectTarget(null);
+        onHoverTarget(null);
+        return;
+      }
+      onSelectTarget(t);
+      onHoverTarget(t);
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
@@ -180,13 +242,37 @@ export function useBoardCanvasEditing(opts: {
         originY: c.y,
       };
     },
-    [brd, editMode, sectionIndex, overlays, planBounds, planPadPx],
+    [brd, editMode, sectionIndex, overlays, planBounds, planPadPx, onSelectTarget, onHoverTarget],
   );
 
   const onPlanPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       const d = dragRef.current;
-      if (!d || d.pointerId !== e.pointerId || !planBounds) return;
+      if (!planBounds) return;
+      if (!d) {
+        if (editMode !== "outline") return;
+        const c = clientToBoardMm(
+          e.clientX,
+          e.clientY,
+          e.currentTarget,
+          planBounds,
+          planPadPx,
+        );
+        if (!c) return;
+        onHoverTarget(
+          pickEditTarget(
+            brd,
+            editMode,
+            sectionIndex,
+            c.x,
+            c.y,
+            hitRadiusBoard(c.tf),
+            overlays,
+          ),
+        );
+        return;
+      }
+      if (d.pointerId !== e.pointerId) return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -195,10 +281,12 @@ export function useBoardCanvasEditing(opts: {
         planPadPx,
       );
       if (!c) return;
-      applyDragDelta(brd, d.edits, c.x - d.originX, c.y - d.originY);
+      const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
+      const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, planBounds, planPadPx, bumpBoardRevision],
+    [brd, editMode, sectionIndex, overlays, planBounds, planPadPx, bumpBoardRevision, onHoverTarget],
   );
 
   const onPlanPointerUp = useCallback(
@@ -241,7 +329,13 @@ export function useBoardCanvasEditing(opts: {
         hitRadiusBoard(c.tf),
         overlays,
       );
-      if (!t) return;
+      if (!t) {
+        onSelectTarget(null);
+        onHoverTarget(null);
+        return;
+      }
+      onSelectTarget(t);
+      onHoverTarget(t);
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
@@ -258,13 +352,39 @@ export function useBoardCanvasEditing(opts: {
       overlays,
       profileStringerBounds,
       profilePadPx,
+      onSelectTarget,
+      onHoverTarget,
     ],
   );
 
   const onProfilePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       const d = dragRef.current;
-      if (!d || d.pointerId !== e.pointerId || !profileStringerBounds) return;
+      if (!profileStringerBounds) return;
+      if (!d) {
+        if (editMode !== "deck" && editMode !== "bottom") return;
+        const c = clientToBoardMm(
+          e.clientX,
+          e.clientY,
+          e.currentTarget,
+          profileStringerBounds,
+          profilePadPx,
+        );
+        if (!c) return;
+        onHoverTarget(
+          pickEditTarget(
+            brd,
+            editMode,
+            sectionIndex,
+            c.x,
+            c.y,
+            hitRadiusBoard(c.tf),
+            overlays,
+          ),
+        );
+        return;
+      }
+      if (d.pointerId !== e.pointerId) return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -273,10 +393,12 @@ export function useBoardCanvasEditing(opts: {
         profilePadPx,
       );
       if (!c) return;
-      applyDragDelta(brd, d.edits, c.x - d.originX, c.y - d.originY);
+      const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
+      const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, profileStringerBounds, profilePadPx, bumpBoardRevision],
+    [brd, editMode, sectionIndex, overlays, profileStringerBounds, profilePadPx, bumpBoardRevision, onHoverTarget],
   );
 
   const onProfilePointerUp = useCallback(
@@ -318,7 +440,13 @@ export function useBoardCanvasEditing(opts: {
         hitRadiusBoard(c.tf),
         overlays,
       );
-      if (!t) return;
+      if (!t) {
+        onSelectTarget(null);
+        onHoverTarget(null);
+        return;
+      }
+      onSelectTarget(t);
+      onHoverTarget(t);
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
@@ -335,13 +463,39 @@ export function useBoardCanvasEditing(opts: {
       overlays,
       profileBounds,
       profilePadPx,
+      onSelectTarget,
+      onHoverTarget,
     ],
   );
 
   const onSectionPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       const d = dragRef.current;
-      if (!d || d.pointerId !== e.pointerId || !profileBounds) return;
+      if (!profileBounds) return;
+      if (!d) {
+        if (editMode !== "section") return;
+        const c = clientToBoardMm(
+          e.clientX,
+          e.clientY,
+          e.currentTarget,
+          profileBounds,
+          profilePadPx,
+        );
+        if (!c) return;
+        onHoverTarget(
+          pickEditTarget(
+            brd,
+            editMode,
+            sectionIndex,
+            c.x,
+            c.y,
+            hitRadiusBoard(c.tf),
+            overlays,
+          ),
+        );
+        return;
+      }
+      if (d.pointerId !== e.pointerId) return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -350,10 +504,12 @@ export function useBoardCanvasEditing(opts: {
         profilePadPx,
       );
       if (!c) return;
-      applyDragDelta(brd, d.edits, c.x - d.originX, c.y - d.originY);
+      const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
+      const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, profileBounds, profilePadPx, bumpBoardRevision],
+    [brd, editMode, sectionIndex, overlays, profileBounds, profilePadPx, bumpBoardRevision, onHoverTarget],
   );
 
   const onSectionPointerUp = useCallback(
