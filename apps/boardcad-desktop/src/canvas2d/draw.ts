@@ -1,6 +1,13 @@
 import type { BezierSpline, BBox2D } from "@boardcad/core";
 
-export type FitTransform = { s: number; ox: number; oy: number };
+/** Optional `panPx` / `panPy` shift drawing in canvas pixels after scale (2D pan). */
+export type FitTransform = {
+  s: number;
+  ox: number;
+  oy: number;
+  panPx?: number;
+  panPy?: number;
+};
 export type ControlPointMarkerState = {
   selected?: { index: number; point?: "end" | "prev" | "next" } | null;
   hover?: { index: number; point?: "end" | "prev" | "next" } | null;
@@ -11,12 +18,14 @@ export function computeFit(
   cw: number,
   ch: number,
   pad: number,
+  zoom = 1,
 ): FitTransform {
   const w = Math.max(b.maxX - b.minX, 1e-6);
   const h = Math.max(b.maxY - b.minY, 1e-6);
   const sx = (cw - 2 * pad) / w;
   const sy = (ch - 2 * pad) / h;
-  const s = Math.min(sx, sy);
+  const z = Math.max(0.2, Math.min(zoom, 12));
+  const s = Math.min(sx, sy) * z;
   const innerW = s * w;
   const innerH = s * h;
   const ox = pad + (cw - 2 * pad - innerW) / 2 - s * b.minX;
@@ -30,8 +39,10 @@ export function toCanvas(
   tf: FitTransform,
   ch: number,
 ): [number, number] {
-  const sx = tf.ox + x * tf.s;
-  const sy = ch - (tf.oy + y * tf.s);
+  const px = tf.panPx ?? 0;
+  const py = tf.panPy ?? 0;
+  const sx = tf.ox + x * tf.s + px;
+  const sy = ch - (tf.oy + y * tf.s) + py;
   return [sx, sy];
 }
 
@@ -42,8 +53,10 @@ export function fromCanvas(
   tf: FitTransform,
   ch: number,
 ): [number, number] {
-  const x = (sx - tf.ox) / tf.s;
-  const y = (ch - sy - tf.oy) / tf.s;
+  const px = tf.panPx ?? 0;
+  const py = tf.panPy ?? 0;
+  const x = (sx - px - tf.ox) / tf.s;
+  const y = (ch - sy + py - tf.oy) / tf.s;
   return [x, y];
 }
 

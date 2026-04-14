@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import type { BezierBoard, BBox2D, CommandStack } from "@boardcad/core";
 import {
   MoveControlPointsCommand,
@@ -138,6 +138,21 @@ type DragRef = {
   originY: number;
 } | null;
 
+type Pan2d = { x: number; y: number };
+
+type PanSession = {
+  view: "plan" | "profile" | "section";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startPanX: number;
+  startPanY: number;
+};
+
+function isPanPointer(e: React.PointerEvent<HTMLCanvasElement>): boolean {
+  return e.button === 1 || (e.button === 0 && e.altKey);
+}
+
 export function useBoardCanvasEditing(opts: {
   brd: BezierBoard;
   stack: CommandStack;
@@ -149,6 +164,15 @@ export function useBoardCanvasEditing(opts: {
   profileBounds: BBox2D | null;
   planPadPx: number;
   profilePadPx: number;
+  planZoom: number;
+  profileZoom: number;
+  sectionZoom: number;
+  planPan: Pan2d;
+  profilePan: Pan2d;
+  sectionPan: Pan2d;
+  setPlanPan: Dispatch<SetStateAction<Pan2d>>;
+  setProfilePan: Dispatch<SetStateAction<Pan2d>>;
+  setSectionPan: Dispatch<SetStateAction<Pan2d>>;
   bumpBoardRevision: () => void;
   bumpCmdNonce: () => void;
   setDirty: (v: boolean) => void;
@@ -166,6 +190,15 @@ export function useBoardCanvasEditing(opts: {
     profileBounds,
     planPadPx,
     profilePadPx,
+    planZoom,
+    profileZoom,
+    sectionZoom,
+    planPan,
+    profilePan,
+    sectionPan,
+    setPlanPan,
+    setProfilePan,
+    setSectionPan,
     bumpBoardRevision,
     bumpCmdNonce,
     setDirty,
@@ -174,6 +207,18 @@ export function useBoardCanvasEditing(opts: {
   } = opts;
 
   const dragRef = useRef<DragRef>(null);
+  const panSessionRef = useRef<PanSession | null>(null);
+
+  const finishPan = useCallback((canvas: HTMLCanvasElement, pointerId: number) => {
+    const p = panSessionRef.current;
+    if (!p || p.pointerId !== pointerId) return;
+    panSessionRef.current = null;
+    try {
+      canvas.releasePointerCapture(pointerId);
+    } catch {
+      /* already released */
+    }
+  }, []);
 
   const finishDrag = useCallback(
     (canvas: HTMLCanvasElement, pointerId: number, pushCommand: boolean) => {
@@ -213,9 +258,32 @@ export function useBoardCanvasEditing(opts: {
 
   const onPlanPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (editMode !== "outline" || !planBounds) return;
+      if (!planBounds) return;
       const canvas = e.currentTarget;
-      const c = clientToBoardMm(e.clientX, e.clientY, canvas, planBounds, planPadPx);
+      if (isPanPointer(e)) {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        panSessionRef.current = {
+          view: "plan",
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startPanX: planPan.x,
+          startPanY: planPan.y,
+        };
+        return;
+      }
+      if (editMode !== "outline") return;
+      const c = clientToBoardMm(
+        e.clientX,
+        e.clientY,
+        canvas,
+        planBounds,
+        planPadPx,
+        planZoom,
+        planPan.x,
+        planPan.y,
+      );
       if (!c) return;
       const t = pickEditTarget(
         brd,
@@ -242,11 +310,30 @@ export function useBoardCanvasEditing(opts: {
         originY: c.y,
       };
     },
-    [brd, editMode, sectionIndex, overlays, planBounds, planPadPx, onSelectTarget, onHoverTarget],
+    [
+      brd,
+      editMode,
+      sectionIndex,
+      overlays,
+      planBounds,
+      planPadPx,
+      planZoom,
+      planPan.x,
+      planPan.y,
+      onSelectTarget,
+      onHoverTarget,
+    ],
   );
 
   const onPlanPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "plan" && panS.pointerId === e.pointerId) {
+        const dx = e.clientX - panS.startClientX;
+        const dy = e.clientY - panS.startClientY;
+        setPlanPan({ x: panS.startPanX + dx, y: panS.startPanY + dy });
+        return;
+      }
       const d = dragRef.current;
       if (!planBounds) return;
       if (!d) {
@@ -257,6 +344,9 @@ export function useBoardCanvasEditing(opts: {
           e.currentTarget,
           planBounds,
           planPadPx,
+          planZoom,
+          planPan.x,
+          planPan.y,
         );
         if (!c) return;
         onHoverTarget(
@@ -279,6 +369,9 @@ export function useBoardCanvasEditing(opts: {
         e.currentTarget,
         planBounds,
         planPadPx,
+        planZoom,
+        planPan.x,
+        planPan.y,
       );
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
@@ -286,38 +379,77 @@ export function useBoardCanvasEditing(opts: {
       applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, editMode, sectionIndex, overlays, planBounds, planPadPx, bumpBoardRevision, onHoverTarget],
+    [
+      brd,
+      editMode,
+      sectionIndex,
+      overlays,
+      planBounds,
+      planPadPx,
+      planZoom,
+      planPan.x,
+      planPan.y,
+      bumpBoardRevision,
+      onHoverTarget,
+      setPlanPan,
+    ],
   );
 
   const onPlanPointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "plan" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   const onPlanPointerCancel = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "plan" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   const onProfilePointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (editMode !== "deck" && editMode !== "bottom") return;
       if (!profileStringerBounds) return;
       const canvas = e.currentTarget;
+      if (isPanPointer(e)) {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        panSessionRef.current = {
+          view: "profile",
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startPanX: profilePan.x,
+          startPanY: profilePan.y,
+        };
+        return;
+      }
+      if (editMode !== "deck" && editMode !== "bottom") return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
         canvas,
         profileStringerBounds,
         profilePadPx,
+        profileZoom,
+        profilePan.x,
+        profilePan.y,
       );
       if (!c) return;
       const t = pickEditTarget(
@@ -352,6 +484,9 @@ export function useBoardCanvasEditing(opts: {
       overlays,
       profileStringerBounds,
       profilePadPx,
+      profileZoom,
+      profilePan.x,
+      profilePan.y,
       onSelectTarget,
       onHoverTarget,
     ],
@@ -359,6 +494,13 @@ export function useBoardCanvasEditing(opts: {
 
   const onProfilePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "profile" && panS.pointerId === e.pointerId) {
+        const dx = e.clientX - panS.startClientX;
+        const dy = e.clientY - panS.startClientY;
+        setProfilePan({ x: panS.startPanX + dx, y: panS.startPanY + dy });
+        return;
+      }
       const d = dragRef.current;
       if (!profileStringerBounds) return;
       if (!d) {
@@ -369,6 +511,9 @@ export function useBoardCanvasEditing(opts: {
           e.currentTarget,
           profileStringerBounds,
           profilePadPx,
+          profileZoom,
+          profilePan.x,
+          profilePan.y,
         );
         if (!c) return;
         onHoverTarget(
@@ -391,6 +536,9 @@ export function useBoardCanvasEditing(opts: {
         e.currentTarget,
         profileStringerBounds,
         profilePadPx,
+        profileZoom,
+        profilePan.x,
+        profilePan.y,
       );
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
@@ -398,37 +546,77 @@ export function useBoardCanvasEditing(opts: {
       applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, editMode, sectionIndex, overlays, profileStringerBounds, profilePadPx, bumpBoardRevision, onHoverTarget],
+    [
+      brd,
+      editMode,
+      sectionIndex,
+      overlays,
+      profileStringerBounds,
+      profilePadPx,
+      profileZoom,
+      profilePan.x,
+      profilePan.y,
+      bumpBoardRevision,
+      onHoverTarget,
+      setProfilePan,
+    ],
   );
 
   const onProfilePointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "profile" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   const onProfilePointerCancel = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "profile" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   const onSectionPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (editMode !== "section" || !profileBounds) return;
+      if (!profileBounds) return;
       const canvas = e.currentTarget;
+      if (isPanPointer(e)) {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        panSessionRef.current = {
+          view: "section",
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startPanX: sectionPan.x,
+          startPanY: sectionPan.y,
+        };
+        return;
+      }
+      if (editMode !== "section") return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
         canvas,
         profileBounds,
         profilePadPx,
+        sectionZoom,
+        sectionPan.x,
+        sectionPan.y,
       );
       if (!c) return;
       const t = pickEditTarget(
@@ -463,6 +651,9 @@ export function useBoardCanvasEditing(opts: {
       overlays,
       profileBounds,
       profilePadPx,
+      sectionZoom,
+      sectionPan.x,
+      sectionPan.y,
       onSelectTarget,
       onHoverTarget,
     ],
@@ -470,6 +661,13 @@ export function useBoardCanvasEditing(opts: {
 
   const onSectionPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "section" && panS.pointerId === e.pointerId) {
+        const dx = e.clientX - panS.startClientX;
+        const dy = e.clientY - panS.startClientY;
+        setSectionPan({ x: panS.startPanX + dx, y: panS.startPanY + dy });
+        return;
+      }
       const d = dragRef.current;
       if (!profileBounds) return;
       if (!d) {
@@ -480,6 +678,9 @@ export function useBoardCanvasEditing(opts: {
           e.currentTarget,
           profileBounds,
           profilePadPx,
+          sectionZoom,
+          sectionPan.x,
+          sectionPan.y,
         );
         if (!c) return;
         onHoverTarget(
@@ -502,6 +703,9 @@ export function useBoardCanvasEditing(opts: {
         e.currentTarget,
         profileBounds,
         profilePadPx,
+        sectionZoom,
+        sectionPan.x,
+        sectionPan.y,
       );
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
@@ -509,25 +713,48 @@ export function useBoardCanvasEditing(opts: {
       applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
       bumpBoardRevision();
     },
-    [brd, editMode, sectionIndex, overlays, profileBounds, profilePadPx, bumpBoardRevision, onHoverTarget],
+    [
+      brd,
+      editMode,
+      sectionIndex,
+      overlays,
+      profileBounds,
+      profilePadPx,
+      sectionZoom,
+      sectionPan.x,
+      sectionPan.y,
+      bumpBoardRevision,
+      onHoverTarget,
+      setSectionPan,
+    ],
   );
 
   const onSectionPointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "section" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   const onSectionPointerCancel = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const panS = panSessionRef.current;
+      if (panS?.view === "section" && panS.pointerId === e.pointerId) {
+        finishPan(e.currentTarget, e.pointerId);
+        return;
+      }
       const d = dragRef.current;
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
-    [finishDrag],
+    [finishDrag, finishPan],
   );
 
   return {

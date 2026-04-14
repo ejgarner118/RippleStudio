@@ -16,6 +16,10 @@ const ROWS: [string, string][] = [
   ["Reset 3D to frame board", "View menu → Reset 3D view"],
   ["Reset every workspace view", "View menu → Reset all views"],
   ["3D preview: orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
+  [
+    "2D views (plan / profile / section)",
+    "Wheel zooms (does not scroll the page) · Middle-drag or Alt+drag pan",
+  ],
   ["Insert point after selection", "A"],
   ["Remove control point", "Delete / Backspace"],
   ["Toggle smooth corner", "C"],

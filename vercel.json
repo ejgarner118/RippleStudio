@@ -1,0 +1,12 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run web:build",
+  "outputDirectory": "apps/boardcad-desktop/dist",
+  "installCommand": "npm ci",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

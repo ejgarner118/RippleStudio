@@ -6,13 +6,15 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w ripple-desktop",
-    "tauri:dev": "npm run tauri:dev -w ripple-desktop",
-    "build": "npm run build -w @boardcad/core && npm run build -w ripple-desktop",
-    "test": "npm run test -w @boardcad/core && npm run test -w ripple-desktop",
-    "lint": "npm run build -w @boardcad/core && npm run typecheck -w ripple-desktop",
+    "dev": "npm run dev -w boardcad-web",
+    "build": "npm run build -w @boardcad/core && npm run build -w boardcad-web",
+    "test": "npm run test -w @boardcad/core && npm run test -w boardcad-web",
+    "lint": "npm run build -w @boardcad/core && npm run typecheck -w boardcad-web && npm run check:no-tauri -w boardcad-web",
     "verify": "npm run lint && npm run test && npm run build",
-    "rebuild-test-launch": "npm run verify && npm run tauri:dev"
+    "web:dev": "npm run dev -w boardcad-web",
+    "web:build": "npm run build -w boardcad-web",
+    "web:test": "npm run test -w boardcad-web",
+    "web:typecheck": "npm run typecheck -w boardcad-web"
   },
   "engines": {
     "node": ">=20"

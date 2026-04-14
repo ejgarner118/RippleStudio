@@ -19,13 +19,17 @@ export function renderPlanView(
   outlineUpperXy: Float32Array,
   planBounds: BBox2D | null,
   overlays: OverlayState,
+  zoom = 1,
+  panPx = 0,
+  panPy = 0,
   markerState?: ControlPointMarkerState,
 ): void {
   ctx.fillStyle = "#f4f4f8";
   ctx.fillRect(0, 0, cw, ch);
 
   if (!planBounds) return;
-  const tf = computeFit(planBounds, cw, ch, PLAN_PAD_PX);
+  const base = computeFit(planBounds, cw, ch, PLAN_PAD_PX, zoom);
+  const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
     drawMetricGrid(ctx, tf, ch, planBounds, 50);

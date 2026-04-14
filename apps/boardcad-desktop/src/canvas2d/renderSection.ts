@@ -32,6 +32,9 @@ export function renderSectionView(
   profileXy: Float32Array,
   profileBounds: BBox2D | null,
   overlays: OverlayState,
+  zoom = 1,
+  panPx = 0,
+  panPy = 0,
   markerState?: ControlPointMarkerState,
 ): void {
   ctx.fillStyle = "#faf8f5";
@@ -44,7 +47,8 @@ export function renderSectionView(
     return;
   }
 
-  const tf = computeFit(profileBounds, cw, ch, PROFILE_PAD_PX);
+  const base = computeFit(profileBounds, cw, ch, PROFILE_PAD_PX, zoom);
+  const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
     drawMetricGrid(ctx, tf, ch, profileBounds, 10);

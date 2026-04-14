@@ -1,5 +1,5 @@
 {
-  "name": "ripple-desktop",
+  "name": "boardcad-web",
   "private": true,
   "version": "0.1.3",
   "type": "module",
@@ -8,25 +8,19 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "check:no-tauri": "node ./scripts/check-no-tauri-imports.mjs",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "tauri": "tauri",
-    "tauri:dev": "node ./scripts/tauri-dev.mjs"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@boardcad/core": "*",
     "@react-three/fiber": "^9.0.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-fs": "^2",
-    "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-resizable-panels": "^4.9.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.170.0",

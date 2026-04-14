@@ -47,6 +47,9 @@ export function clientToBoardMm(
   canvas: HTMLCanvasElement,
   bounds: BBox2D,
   padPx: number,
+  zoom = 1,
+  panPx = 0,
+  panPy = 0,
 ): { x: number; y: number; tf: FitTransform; cw: number; ch: number } | null {
   const cw = canvas.width;
   const ch = canvas.height;
@@ -54,7 +57,8 @@ export function clientToBoardMm(
   if (rect.width <= 0 || rect.height <= 0) return null;
   const px = ((clientX - rect.left) / rect.width) * cw;
   const py = ((clientY - rect.top) / rect.height) * ch;
-  const tf = computeFit(bounds, cw, ch, padPx);
+  const base = computeFit(bounds, cw, ch, padPx, zoom);
+  const tf: FitTransform = { ...base, panPx, panPy };
   const [x, y] = fromCanvas(px, py, tf, ch);
   return { x, y, tf, cw, ch };
 }

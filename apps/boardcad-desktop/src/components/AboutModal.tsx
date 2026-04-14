@@ -44,12 +44,12 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
         </div>
         <div className="modal-dialog__body">
           <p className="modal-dialog__lede">
-            Open, inspect, and save surfboard <code>.brd</code> designs on your desktop.
-            Files stay local on your machine.
+            Open, inspect, and save surfboard <code>.brd</code> designs in your browser.
+            Files stay local unless you choose to upload them elsewhere.
           </p>
           <p className="modal-dialog__meta">
-            Version {APP_VERSION_LABEL} · Built with Tauri, React, and the shared
-            TypeScript core library in this repository.
+            Version {APP_VERSION_LABEL} · Built with React and the shared TypeScript
+            core library in this repository.
           </p>
           <p className="modal-dialog__hint">
             Tip: Use <kbd>Ctrl</kbd>+<kbd>O</kbd> to open, <kbd>Ctrl</kbd>+<kbd>S</kbd>{" "}

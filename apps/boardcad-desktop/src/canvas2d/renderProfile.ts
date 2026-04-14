@@ -22,6 +22,9 @@ export function renderProfileView(
   bottomXy: Float32Array,
   profileStringerBounds: BBox2D | null,
   overlays: OverlayState,
+  zoom = 1,
+  panPx = 0,
+  panPy = 0,
   deckMarkers?: ControlPointMarkerState,
   bottomMarkers?: ControlPointMarkerState,
 ): void {
@@ -35,7 +38,8 @@ export function renderProfileView(
     return;
   }
 
-  const tf = computeFit(profileStringerBounds, cw, ch, PROFILE_PAD_PX);
+  const base = computeFit(profileStringerBounds, cw, ch, PROFILE_PAD_PX, zoom);
+  const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
     drawMetricGrid(ctx, tf, ch, profileStringerBounds, 25);

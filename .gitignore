@@ -16,3 +16,4 @@ apps/boardcad-desktop/src-tauri/target/
 .vite/
 coverage/
 *.tsbuildinfo
+.vercel

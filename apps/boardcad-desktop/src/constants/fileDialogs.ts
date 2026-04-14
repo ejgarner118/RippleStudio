@@ -1,26 +1,29 @@
-import type { DialogFilter } from "@tauri-apps/plugin-dialog";
+export type FileFilter = {
+  name: string;
+  extensions: string[];
+};
 
-export const FILTER_BRD: DialogFilter = {
+export const FILTER_BRD: FileFilter = {
   name: "Surfboard board (.brd)",
   extensions: ["brd"],
 };
 
-export const FILTER_STL: DialogFilter = {
+export const FILTER_STL: FileFilter = {
   name: "STL (binary)",
   extensions: ["stl"],
 };
 
-export const FILTER_STL_ASCII: DialogFilter = {
+export const FILTER_STL_ASCII: FileFilter = {
   name: "STL (ASCII)",
   extensions: ["stl"],
 };
 
-export const FILTER_OBJ: DialogFilter = {
+export const FILTER_OBJ: FileFilter = {
   name: "Wavefront OBJ",
   extensions: ["obj"],
 };
 
-export const FILTER_SVG: DialogFilter = {
+export const FILTER_SVG: FileFilter = {
   name: "SVG",
   extensions: ["svg"],
 };

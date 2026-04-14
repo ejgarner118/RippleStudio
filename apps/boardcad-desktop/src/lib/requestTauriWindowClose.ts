@@ -1,12 +1,7 @@
 import { confirmDiscardUnsaved } from "./confirmDiscard";
 
-/** User-initiated quit (e.g. Ctrl+W). Respects dirty state; requires window close permission in Tauri. */
+/** Browser variant for Ctrl+W: we can prompt, but actual tab close remains browser-controlled. */
 export async function requestTauriWindowClose(isDirty: boolean): Promise<void> {
   if (isDirty && !(await confirmDiscardUnsaved())) return;
-  try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    await getCurrentWindow().close();
-  } catch {
-    /* Vite preview without Tauri */
-  }
+  window.close();
 }

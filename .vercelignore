@@ -1,0 +1,6 @@
+apps/boardcad-desktop/src-tauri
+apps/boardcad-desktop/scripts/tauri-dev.mjs
+boardcad-java
+**/target
+**/*.msi
+**/*.exe

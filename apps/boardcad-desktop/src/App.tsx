@@ -40,15 +40,7 @@ import {
   type SplineEditTarget,
   type SplineTarget,
 } from "@boardcad/core";
-import { join, resolveResource, resourceDir } from "@tauri-apps/api/path";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { BaseDirectory, readFile } from "@tauri-apps/plugin-fs";
 import {
-  FILTER_BRD,
-  FILTER_OBJ,
-  FILTER_STL,
-  FILTER_STL_ASCII,
-  FILTER_SVG,
   safeBoardFileBase,
 } from "./constants/fileDialogs";
 import type { OrbitControlsApi } from "./board3d/BoardScene3D";
@@ -72,14 +64,18 @@ import { Toast, type ToastTone } from "./components/Toast";
 import { WorkspacePanels } from "./components/WorkspacePanels";
 import { PLAN_PAD_PX, PROFILE_PAD_PX } from "./constants";
 import { useBoardCanvasEditing } from "./hooks/useBoardCanvasEditing";
+import { useCanvasWheelZoom } from "./hooks/useCanvasWheelZoom";
 import { useBoardGeometry } from "./hooks/useBoardGeometry";
 import { useDesktopSettings } from "./hooks/useDesktopSettings";
 import { useWindowCloseGuard } from "./hooks/useWindowCloseGuard";
 import { confirmDiscardUnsaved } from "./lib/confirmDiscard";
 import {
   formatFsError,
+  hasRecentBoard,
+  openBoardFromPicker,
   readBoardFileBytes,
   readBytesFromPath,
+  rememberRecentBoard,
   writeBytesFromDialogPath,
   writeTextFromDialogPath,
 } from "./lib/fileIo";
@@ -135,6 +131,12 @@ export default function App() {
   const [resetViewPlanNonce, setResetViewPlanNonce] = useState(0);
   const [resetViewProfileNonce, setResetViewProfileNonce] = useState(0);
   const [resetViewSectionNonce, setResetViewSectionNonce] = useState(0);
+  const [planZoom, setPlanZoom] = useState(1);
+  const [profileZoom, setProfileZoom] = useState(1);
+  const [sectionZoom, setSectionZoom] = useState(1);
+  const [planPan, setPlanPan] = useState({ x: 0, y: 0 });
+  const [profilePan, setProfilePan] = useState({ x: 0, y: 0 });
+  const [sectionPan, setSectionPan] = useState({ x: 0, y: 0 });
   const [canvasLayoutNonce, setCanvasLayoutNonce] = useState(0);
   const [viewReset3dNonce, setViewReset3dNonce] = useState(0);
   const [emptyGuidedStep, setEmptyGuidedStep] = useState<number | null>(null);
@@ -211,6 +213,15 @@ export default function App() {
     profileBounds,
     planPadPx: PLAN_PAD_PX,
     profilePadPx: PROFILE_PAD_PX,
+    planZoom,
+    profileZoom,
+    sectionZoom,
+    planPan,
+    profilePan,
+    sectionPan,
+    setPlanPan,
+    setProfilePan,
+    setSectionPan,
     bumpBoardRevision,
     bumpCmdNonce,
     setDirty: setIsDirty,
@@ -220,6 +231,12 @@ export default function App() {
     },
     onHoverTarget: (t) => setHoveredTarget(t),
   });
+
+  const clampZoom = useCallback((z: number) => Math.max(0.5, Math.min(z, 12)), []);
+
+  useCanvasWheelZoom(canvasPlanRef, setPlanZoom, clampZoom, canvasLayoutNonce);
+  useCanvasWheelZoom(canvasProfileRef, setProfileZoom, clampZoom, canvasLayoutNonce);
+  useCanvasWheelZoom(canvasSectionRef, setSectionZoom, clampZoom, canvasLayoutNonce);
 
   useWindowCloseGuard(isDirty);
 
@@ -273,6 +290,9 @@ export default function App() {
       outlineUpperXy,
       planBounds,
       overlays,
+      planZoom,
+      planPan.x,
+      planPan.y,
       markerStateFor("outline"),
     );
   }, [
@@ -282,6 +302,9 @@ export default function App() {
     outlineUpperXy,
     overlays,
     markerStateFor,
+    planZoom,
+    planPan.x,
+    planPan.y,
     resetViewPlanNonce,
     canvasLayoutNonce,
     boardRevision,
@@ -300,6 +323,9 @@ export default function App() {
       bottomXy,
       profileStringerBounds,
       overlays,
+      profileZoom,
+      profilePan.x,
+      profilePan.y,
       markerStateFor("deck"),
       markerStateFor("bottom"),
     );
@@ -310,6 +336,9 @@ export default function App() {
     profileStringerBounds,
     overlays,
     markerStateFor,
+    profileZoom,
+    profilePan.x,
+    profilePan.y,
     resetViewProfileNonce,
     canvasLayoutNonce,
     boardRevision,
@@ -328,6 +357,9 @@ export default function App() {
       profileXy,
       profileBounds,
       overlays,
+      sectionZoom,
+      sectionPan.x,
+      sectionPan.y,
       markerStateFor("section"),
     );
   }, [
@@ -337,6 +369,9 @@ export default function App() {
     profileBounds,
     overlays,
     markerStateFor,
+    sectionZoom,
+    sectionPan.x,
+    sectionPan.y,
     resetViewSectionNonce,
     canvasLayoutNonce,
     boardRevision,
@@ -363,6 +398,7 @@ export default function App() {
         const next = new BezierBoard();
         const r = loadBrdFromBytes(next, data, path);
         if (r === 0) {
+          rememberRecentBoard(path, data);
           stack.clear();
           bumpCmdNonce();
           setBrd(next);
@@ -387,20 +423,22 @@ export default function App() {
 
   const openBoard = useCallback(async () => {
     if (isDirty && !(await confirmDiscardUnsaved())) return;
-    const selected = await open({
-      multiple: false,
-      filters: [FILTER_BRD],
-    });
-    if (selected === null || Array.isArray(selected)) return;
-    await loadBoardFromPath(selected);
+    const picked = await openBoardFromPicker();
+    if (!picked) return;
+    rememberRecentBoard(picked.path, picked.data);
+    await loadBoardFromPath(picked.path);
   }, [isDirty, loadBoardFromPath]);
 
   const openRecentPath = useCallback(
     async (p: string) => {
       if (isDirty && !(await confirmDiscardUnsaved())) return;
+      if (!hasRecentBoard(p)) {
+        showToast("Recent file is no longer available in this browser session.", "error");
+        return;
+      }
       await loadBoardFromPath(p);
     },
-    [isDirty, loadBoardFromPath],
+    [isDirty, loadBoardFromPath, showToast],
   );
 
   const newBoard = useCallback(async () => {
@@ -444,10 +482,9 @@ export default function App() {
         return;
       }
 
-      let nextBoard: BezierBoard | null = null;
-
       const templateFile = TEMPLATE_FILE_BY_PRESET[preset];
       const publicUrl = `/BoardTemplates/${templateFile}`;
+      let nextBoard: BezierBoard | null = null;
       try {
         const response = await fetch(publicUrl, { cache: "no-store" });
         if (response.ok) {
@@ -459,39 +496,15 @@ export default function App() {
           }
         }
       } catch {
-        // Fall through to Tauri resource/file loading.
-      }
-
-      const resourceRelative = `BoardTemplates/${templateFile}`;
-      if (!nextBoard) {
-        try {
-          const bytes = await readFile(resourceRelative, {
-            baseDir: BaseDirectory.Resource,
-          });
-          const loaded = new BezierBoard();
-          const result = loadBrdFromBytes(loaded, bytes, resourceRelative);
-          if (result === 0) {
-            nextBoard = loaded;
-          }
-        } catch {
-          // Fall through to path-based candidate probing.
-        }
+        // Continue with additional candidate paths below.
       }
 
       if (!nextBoard) {
-        const resourceBase = await resourceDir().catch(() => null);
-        const resolvedResource = await resolveResource(`BoardTemplates/${templateFile}`).catch(
-          () => null,
-        );
         const candidatePaths = [
-          resolvedResource,
-          resourceBase ? await join(resourceBase, "BoardTemplates", templateFile) : null,
           `BoardTemplates/${templateFile}`,
           `../BoardTemplates/${templateFile}`,
           `../../BoardTemplates/${templateFile}`,
-          `../../../BoardTemplates/${templateFile}`,
-        ].filter((v): v is string => Boolean(v));
-
+        ];
         for (const candidate of candidatePaths) {
           try {
             const bytes = await readBytesFromPath(candidate);
@@ -508,10 +521,8 @@ export default function App() {
       }
 
       if (!nextBoard) {
-        const msg = `Could not locate template file: ${templateFile}`;
-        setFileError(msg);
-        showToast(msg, "error");
-        return;
+        nextBoard = createStarterBoard();
+        showToast(`Template ${templateFile} not found. Loaded starter board instead.`, "info");
       }
 
       stack.clear();
@@ -559,21 +570,13 @@ export default function App() {
       await saveBoardToPath(path);
       return;
     }
-    const dest = await save({
-      filters: [FILTER_BRD],
-      defaultPath: `${safeBoardFileBase(brd.name, "board")}.brd`,
-    });
-    if (!dest) return;
+    const dest = `${safeBoardFileBase(brd.name, "board")}.brd`;
     await saveBoardToPath(dest);
   }, [brd.name, path, saveBoardToPath]);
 
   const saveBoardAs = useCallback(async () => {
     setFileError(null);
-    const dest = await save({
-      filters: [FILTER_BRD],
-      defaultPath: `${safeBoardFileBase(brd.name, "board")}.brd`,
-    });
-    if (!dest) return;
+    const dest = `${safeBoardFileBase(brd.name, "board")}.brd`;
     await saveBoardToPath(dest);
   }, [brd.name, saveBoardToPath]);
 
@@ -592,11 +595,7 @@ export default function App() {
             showToast(meshExportBlockedMsg, "error");
             return;
           }
-          const dest = await save({
-            filters: [FILTER_STL],
-            defaultPath: `${base}.stl`,
-          });
-          if (!dest) return;
+          const dest = `${base}.stl`;
           const p = await writeBytesFromDialogPath(dest, buf);
           showToast(`Exported ${p}`, "success");
           return;
@@ -607,11 +606,7 @@ export default function App() {
             showToast(meshExportBlockedMsg, "error");
             return;
           }
-          const dest = await save({
-            filters: [FILTER_STL_ASCII],
-            defaultPath: `${base}.stl`,
-          });
-          if (!dest) return;
+          const dest = `${base}.stl`;
           const p = await writeTextFromDialogPath(dest, text);
           showToast(`Exported ${p}`, "success");
           return;
@@ -622,11 +617,7 @@ export default function App() {
             showToast(meshExportBlockedMsg, "error");
             return;
           }
-          const dest = await save({
-            filters: [FILTER_OBJ],
-            defaultPath: `${base}.obj`,
-          });
-          if (!dest) return;
+          const dest = `${base}.obj`;
           const p = await writeTextFromDialogPath(dest, text);
           showToast(`Exported ${p}`, "success");
           return;
@@ -644,11 +635,7 @@ export default function App() {
               ? "profile"
               : "spec";
         const svg = renderPrintSvg(svgKind, brd);
-        const dest = await save({
-          filters: [FILTER_SVG],
-          defaultPath: `${safeBoardFileBase(brd.name, slug)}.svg`,
-        });
-        if (!dest) return;
+        const dest = `${safeBoardFileBase(brd.name, slug)}.svg`;
         const p = await writeTextFromDialogPath(dest, svg);
         showToast(`Exported ${p}`, "success");
       } catch (e) {
@@ -1182,12 +1169,24 @@ export default function App() {
         canUndo={canUndo}
         canRedo={canRedo}
         onFit2d={() => {
+          setPlanZoom(1);
+          setProfileZoom(1);
+          setSectionZoom(1);
+          setPlanPan({ x: 0, y: 0 });
+          setProfilePan({ x: 0, y: 0 });
+          setSectionPan({ x: 0, y: 0 });
           setResetViewPlanNonce((n) => n + 1);
           setResetViewProfileNonce((n) => n + 1);
           setResetViewSectionNonce((n) => n + 1);
         }}
         onReset3d={() => setViewReset3dNonce((n) => n + 1)}
         onResetAllViews={() => {
+          setPlanZoom(1);
+          setProfileZoom(1);
+          setSectionZoom(1);
+          setPlanPan({ x: 0, y: 0 });
+          setProfilePan({ x: 0, y: 0 });
+          setSectionPan({ x: 0, y: 0 });
           setResetViewPlanNonce((n) => n + 1);
           setResetViewProfileNonce((n) => n + 1);
           setResetViewSectionNonce((n) => n + 1);
@@ -1271,9 +1270,21 @@ export default function App() {
         ) : null}
         <div className="workspace__main">
           <WorkspacePanels
-            onResetPlanView={() => setResetViewPlanNonce((n) => n + 1)}
-            onResetProfileView={() => setResetViewProfileNonce((n) => n + 1)}
-            onResetSectionView={() => setResetViewSectionNonce((n) => n + 1)}
+            onResetPlanView={() => {
+              setPlanZoom(1);
+              setPlanPan({ x: 0, y: 0 });
+              setResetViewPlanNonce((n) => n + 1);
+            }}
+            onResetProfileView={() => {
+              setProfileZoom(1);
+              setProfilePan({ x: 0, y: 0 });
+              setResetViewProfileNonce((n) => n + 1);
+            }}
+            onResetSectionView={() => {
+              setSectionZoom(1);
+              setSectionPan({ x: 0, y: 0 });
+              setResetViewSectionNonce((n) => n + 1);
+            }}
             onReset3dView={() => setViewReset3dNonce((n) => n + 1)}
             planCanvas={
               <canvas
