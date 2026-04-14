@@ -29,11 +29,11 @@ import {
   addRecentFilePath,
   RemoveCrossSectionCommand,
   RemoveControlPointCommand,
-  ResetSplineToLineCommand,
   SetControlPointHandleModeCommand,
   SetCrossSectionPositionCommand,
   InsertControlPointCommand,
   MoveCrossSectionCommand,
+  MoveControlPointsCommand,
   cloneCrossSection,
   setLocale,
   t,
@@ -78,6 +78,7 @@ import {
   readBoardFileBytes,
   readBytesFromPath,
   rememberRecentBoard,
+  saveBoardTextAs,
   writeBytesFromDialogPath,
   writeTextFromDialogPath,
 } from "./lib/fileIo";
@@ -610,9 +611,24 @@ export default function App() {
 
   const saveBoardAs = useCallback(async () => {
     setFileError(null);
-    const dest = `${safeBoardFileBase(brd.name, "board")}.brd`;
-    await saveBoardToPath(dest);
-  }, [brd.name, saveBoardToPath]);
+    try {
+      const dest = `${safeBoardFileBase(brd.name, "board")}.brd`;
+      const body = saveBrdToString(brd);
+      const saved = await saveBoardTextAs(dest, body);
+      if (!saved) return;
+      setPath(saved.path);
+      setIsDirty(false);
+      pushRecent(saved.path);
+      showToast(
+        saved.method === "picker" ? `Saved via file picker: ${saved.path}` : `Downloaded ${saved.path}`,
+        "success",
+      );
+    } catch (e) {
+      const msg = formatFsError(e);
+      setFileError(msg);
+      showToast(msg, "error");
+    }
+  }, [brd, pushRecent, showToast]);
 
   const meshExportBlockedMsg =
     "Could not export mesh (need at least two cross-sections and valid geometry).";
@@ -910,6 +926,12 @@ export default function App() {
     return { kind: t.kind, index: i };
   }, [selectedControlPoint, currentSplineTarget]);
 
+  const selectedTargetWithPoint = useCallback((): SplineEditTarget | null => {
+    const t = selectedTarget();
+    if (!t) return null;
+    return { ...t, point: selectedControlPointKind ?? "end" };
+  }, [selectedTarget, selectedControlPointKind]);
+
   const addControlPoint = useCallback(() => {
     const n = currentSplinePointCount();
     if (n < 2) {
@@ -1002,13 +1024,55 @@ export default function App() {
     return k ? k.getHandleMode() : null;
   })();
 
-  const resetCurrentSpline = useCallback(() => {
-    stack.push(new ResetSplineToLineCommand(brd, currentSplineTarget()));
-    bumpCmdNonce();
-    setIsDirty(true);
-    bumpBoardRevision();
-    showToast("Current spline reset to a recoverable baseline.", "success");
-  }, [stack, brd, currentSplineTarget, showToast]);
+  const selectedPointCoords = (() => {
+    const t = selectedTargetWithPoint();
+    if (!t) return null;
+    const k = getKnot(brd, t);
+    if (!k) return null;
+    const pointKind = t.point ?? "end";
+    const p =
+      pointKind === "end"
+        ? k.points[0]!
+        : pointKind === "prev"
+          ? k.points[1]!
+          : k.points[2]!;
+    return { x: p.x, y: p.y };
+  })();
+
+  const setSelectedPointCoords = useCallback(
+    (next: { x: number; y: number }) => {
+      const t = selectedTargetWithPoint();
+      if (!t) {
+        showToast("Select a control point first.", "error");
+        return;
+      }
+      const k = getKnot(brd, t);
+      if (!k) return;
+      const before = [k.points[0]!.x, k.points[0]!.y, k.points[1]!.x, k.points[1]!.y, k.points[2]!.x, k.points[2]!.y];
+      const pointKind = t.point ?? "end";
+      const pi = pointKind === "end" ? 0 : pointKind === "prev" ? 1 : 2;
+      if (pointKind === "end") {
+        const dx = next.x - k.points[0]!.x;
+        const dy = next.y - k.points[0]!.y;
+        for (let i = 0; i < 3; i++) {
+          k.points[i]!.x += dx;
+          k.points[i]!.y += dy;
+        }
+      } else {
+        k.points[pi]!.x = next.x;
+        k.points[pi]!.y = next.y;
+      }
+      brd.checkAndFixContinousy(false, true);
+      brd.setLocks();
+      const after = [k.points[0]!.x, k.points[0]!.y, k.points[1]!.x, k.points[1]!.y, k.points[2]!.x, k.points[2]!.y];
+      stack.push(new MoveControlPointsCommand(brd, [{ target: t, before, after }]));
+      bumpCmdNonce();
+      setIsDirty(true);
+      bumpBoardRevision();
+      showToast("Point coordinates updated", "success");
+    },
+    [selectedTargetWithPoint, brd, stack, showToast],
+  );
 
   const computeGeometryIssues = useCallback((): string[] => {
     const issues: string[] = [];
@@ -1326,13 +1390,15 @@ export default function App() {
         onMoveSectionLater={moveSectionLater}
         onAddSectionTemplate={addSectionTemplate}
         selectedControlPoint={selectedControlPoint}
+        selectedControlPointKind={selectedControlPointKind}
+        selectedPointCoords={selectedPointCoords}
+        onSetSelectedPointCoords={setSelectedPointCoords}
         onAddControlPoint={addControlPoint}
         onRemoveControlPoint={removeControlPoint}
         canRemoveControlPoint={currentSplinePointCount() > 2}
         onToggleContinuity={toggleContinuity}
         selectedHandleMode={selectedHandleMode}
         onSetHandleMode={setHandleMode}
-        onResetCurrentSpline={resetCurrentSpline}
         validationIssues={geometryIssues}
         onFixSectionOrder={fixSectionOrder}
         onApplyProfileShaping={applyProfileShaping}
@@ -1385,6 +1451,8 @@ export default function App() {
         </p>
         <div className="workspace__main">
           <WorkspacePanels
+            editMode={editMode}
+            onSetEditMode={setEditMode}
             onResetPlanView={() => {
               resetPlanView();
             }}

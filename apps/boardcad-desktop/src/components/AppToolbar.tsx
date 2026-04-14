@@ -114,10 +114,13 @@ export function AppToolbar({
       <div className="app-toolbar__brand">
         <img
           className="app-toolbar__logo"
-          src="/app-icon.svg"
+          src="/branding/RS_LogoBoard100.png"
           alt=""
           width={28}
           height={28}
+          onError={(e) => {
+            e.currentTarget.src = "/app-icon.svg";
+          }}
         />
         <span className="app-toolbar__name">{APP_DISPLAY_NAME}</span>
       </div>

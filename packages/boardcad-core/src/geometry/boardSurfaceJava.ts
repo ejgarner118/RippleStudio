@@ -103,6 +103,19 @@ function pushP(pos: number[], p: Point3Java): number {
   return i;
 }
 
+function triangleArea2(a: Point3Java, b: Point3Java, c: Point3Java): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const abz = b.z - a.z;
+  const acx = c.x - a.x;
+  const acy = c.y - a.y;
+  const acz = c.z - a.z;
+  const cx = aby * acz - abz * acy;
+  const cy = abz * acx - abx * acz;
+  const cz = abx * acy - aby * acx;
+  return cx * cx + cy * cy + cz * cz;
+}
+
 function emitQuad(
   pos: number[],
   idx: number[],
@@ -111,16 +124,24 @@ function emitQuad(
   v2: Point3Java,
   v3: Point3Java,
 ): void {
-  const i0 = pushP(pos, v0);
-  const i1 = pushP(pos, v1);
-  const i2 = pushP(pos, v2);
-  const i3 = pushP(pos, v3);
-  idx.push(i0, i1, i2, i0, i2, i3);
-  const j0 = pushP(pos, { x: v3.x, y: -v3.y, z: v3.z });
-  const j1 = pushP(pos, { x: v2.x, y: -v2.y, z: v2.z });
-  const j2 = pushP(pos, { x: v1.x, y: -v1.y, z: v1.z });
-  const j3 = pushP(pos, { x: v0.x, y: -v0.y, z: v0.z });
-  idx.push(j0, j1, j2, j0, j2, j3);
+  if (triangleArea2(v0, v1, v2) > 1e-12 && triangleArea2(v0, v2, v3) > 1e-12) {
+    const i0 = pushP(pos, v0);
+    const i1 = pushP(pos, v1);
+    const i2 = pushP(pos, v2);
+    const i3 = pushP(pos, v3);
+    idx.push(i0, i1, i2, i0, i2, i3);
+  }
+  const m0 = { x: v3.x, y: -v3.y, z: v3.z };
+  const m1 = { x: v2.x, y: -v2.y, z: v2.z };
+  const m2 = { x: v1.x, y: -v1.y, z: v1.z };
+  const m3 = { x: v0.x, y: -v0.y, z: v0.z };
+  if (triangleArea2(m0, m1, m2) > 1e-12 && triangleArea2(m0, m2, m3) > 1e-12) {
+    const j0 = pushP(pos, m0);
+    const j1 = pushP(pos, m1);
+    const j2 = pushP(pos, m2);
+    const j3 = pushP(pos, m3);
+    idx.push(j0, j1, j2, j0, j2, j3);
+  }
 }
 
 function centroid3(ring: Point3Java[]): Point3Java {
@@ -136,21 +157,62 @@ function centroid3(ring: Point3Java[]): Point3Java {
   return { x: x / n, y: y / n, z: z / n };
 }
 
-/** Fan + mirrored fan so caps match the mirrored half-hull topology. */
-function appendEndCap(
+function distSq3(a: Point3Java, b: Point3Java): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/** Collapse consecutive duplicates so end-cap fans stay stable. */
+function dedupeRingPoints(ring: Point3Java[], epsSq = 1e-10): Point3Java[] {
+  const out: Point3Java[] = [];
+  for (const p of ring) {
+    if (out.length === 0 || distSq3(out[out.length - 1]!, p) > epsSq) out.push(p);
+  }
+  if (out.length >= 2 && distSq3(out[0]!, out[out.length - 1]!) <= epsSq) out.pop();
+  return out;
+}
+
+/**
+ * Half-hull perimeter at station `x` (y ≥ 0 side) using the **same** angular splits as
+ * deck/bottom strips. This matches the strip boundary so end caps seal without a visible
+ * seam/hole at the nose or tail.
+ */
+function halfHullRingAtStripBoundary(
   board: BezierBoard,
-  pos: number[],
-  idx: number[],
   x: number,
-  nSeg: number,
-  outwardPlusX: boolean,
-): void {
+  deckSteps: number,
+  bottomSteps: number,
+  deckMin: number,
+  deckMax: number,
+  bottomMin: number,
+  bottomMax: number,
+): Point3Java[] {
   const ring: Point3Java[] = [];
-  for (let i = 0; i < nSeg; i++) {
-    const s = (i + 0.5) / nSeg;
-    const p = getPointAtJava(board, x, s, -360, 360, true, false);
+  for (let i = 0; i < deckSteps; i++) {
+    const p =
+      i === 0
+        ? getPointAtJava(board, x, 0, -360, 360, true, false)
+        : getSurfacePointAngled(board, x, deckMin, deckMax, i, deckSteps);
     if (p) ring.push(p);
   }
+  const deckRail = getSurfacePointAngled(board, x, deckMin, deckMax, deckSteps, deckSteps);
+  if (deckRail) ring.push(deckRail);
+  for (let k = 1; k <= bottomSteps; k++) {
+    const p = getSurfacePointAngled(board, x, bottomMin, bottomMax, k, bottomSteps);
+    if (p) ring.push(p);
+  }
+  return dedupeRingPoints(ring);
+}
+
+/** Fan + mirrored fan so caps match the mirrored half-hull topology. */
+function appendEndCapFromRing(
+  pos: number[],
+  idx: number[],
+  ring: Point3Java[],
+  outwardPlusX: boolean,
+): void {
   if (ring.length < 3) return;
 
   const c = centroid3(ring);
@@ -163,10 +225,11 @@ function appendEndCap(
   for (let i = 0; i < n; i++) {
     const a = ringIdx[i]!;
     const b = ringIdx[(i + 1) % n]!;
-    if (outwardPlusX) {
-      idx.push(cIdx, b, a);
-    } else {
-      idx.push(cIdx, a, b);
+    const pa = ring[i]!;
+    const pb = ring[(i + 1) % n]!;
+    if (triangleArea2(c, pa, pb) > 1e-12) {
+      if (outwardPlusX) idx.push(cIdx, b, a);
+      else idx.push(cIdx, a, b);
     }
   }
 
@@ -178,10 +241,12 @@ function appendEndCap(
   for (let i = 0; i < n; i++) {
     const a = mRing[i]!;
     const b = mRing[(i + 1) % n]!;
-    if (outwardPlusX) {
-      idx.push(cM, a, b);
-    } else {
-      idx.push(cM, b, a);
+    const pa = { x: ring[i]!.x, y: -ring[i]!.y, z: ring[i]!.z };
+    const pb = { x: ring[(i + 1) % n]!.x, y: -ring[(i + 1) % n]!.y, z: ring[(i + 1) % n]!.z };
+    const cm = { x: c.x, y: -c.y, z: c.z };
+    if (triangleArea2(cm, pa, pb) > 1e-12) {
+      if (outwardPlusX) idx.push(cM, a, b);
+      else idx.push(cM, b, a);
     }
   }
 }
@@ -196,7 +261,6 @@ export function buildJavaSurfaceMesh(
 ): { positions: Float32Array; indices: Uint32Array } | null {
   const lengthAcc = opts.lengthStepMm ?? 1;
   const widthAcc = opts.widthStepMm ?? 1;
-  const capSeg = Math.max(8, Math.min(128, opts.capSegments ?? 40));
 
   const length = getBoardLengthJava(board);
   if (length < 1e-3) return null;
@@ -293,8 +357,30 @@ export function buildJavaSurfaceMesh(
     }
   }
 
-  appendEndCap(board, pos, idx, 0, capSeg, false);
-  appendEndCap(board, pos, idx, length, capSeg, true);
+  const lowX = SURFACE_X_CLAMP_LOW;
+  const highX = Math.max(lowX, length - SURFACE_X_CLAMP_LOW);
+  const noseRing = halfHullRingAtStripBoundary(
+    board,
+    lowX,
+    deckSteps,
+    bottomSteps,
+    deckMin,
+    deckMax,
+    bottomMin,
+    bottomMax,
+  );
+  const tailRing = halfHullRingAtStripBoundary(
+    board,
+    highX,
+    deckSteps,
+    bottomSteps,
+    deckMin,
+    deckMax,
+    bottomMin,
+    bottomMax,
+  );
+  appendEndCapFromRing(pos, idx, noseRing, false);
+  appendEndCapFromRing(pos, idx, tailRing, true);
 
   const positions = new Float32Array(pos);
   const indices = new Uint32Array(idx);

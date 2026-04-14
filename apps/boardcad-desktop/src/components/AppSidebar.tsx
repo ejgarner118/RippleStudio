@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { BezierBoard } from "@boardcad/core";
 import type { HandleMode } from "@boardcad/core";
@@ -23,13 +23,15 @@ type AppSidebarProps = {
   onMoveSectionLater: () => void;
   onAddSectionTemplate: (template: "current" | "soft" | "hard") => void;
   selectedControlPoint: number | null;
+  selectedControlPointKind: "end" | "prev" | "next" | null;
+  selectedPointCoords: { x: number; y: number } | null;
+  onSetSelectedPointCoords: (next: { x: number; y: number }) => void;
   onAddControlPoint: () => void;
   onRemoveControlPoint: () => void;
   canRemoveControlPoint: boolean;
   onToggleContinuity: () => void;
   selectedHandleMode: HandleMode | null;
   onSetHandleMode: (mode: HandleMode) => void;
-  onResetCurrentSpline: () => void;
   validationIssues: string[];
   onFixSectionOrder: () => void;
   onApplyProfileShaping: (v: {
@@ -62,13 +64,15 @@ export function AppSidebar({
   onMoveSectionLater,
   onAddSectionTemplate,
   selectedControlPoint,
+  selectedControlPointKind,
+  selectedPointCoords,
+  onSetSelectedPointCoords,
   onAddControlPoint,
   onRemoveControlPoint,
   canRemoveControlPoint,
   onToggleContinuity,
   selectedHandleMode,
   onSetHandleMode,
-  onResetCurrentSpline,
   validationIssues,
   onFixSectionOrder,
   onApplyProfileShaping,
@@ -82,6 +86,11 @@ export function AppSidebar({
   const [tailRocker, setTailRocker] = useState(7);
   const [maxThickness, setMaxThickness] = useState(4);
   const [maxThicknessPosPct, setMaxThicknessPosPct] = useState(50);
+  const [coordDraft, setCoordDraft] = useState<{ x: string; y: string }>({ x: "", y: "" });
+
+  useEffect(() => {
+    setCoordDraft({ x: "", y: "" });
+  }, [selectedControlPoint, selectedControlPointKind, editMode, sectionIndex]);
 
   return (
     <aside className="sidebar" aria-label="View options and board info">
@@ -105,7 +114,10 @@ export function AppSidebar({
             </select>
           </label>
           <p className="sidebar-hint">
-            Selection: {selectedControlPoint == null ? "none" : `#${selectedControlPoint + 1}`}
+            Selection:{" "}
+            {selectedControlPoint == null
+              ? "none"
+              : `#${selectedControlPoint + 1} (${selectedControlPointKind ?? "end"})`}
           </p>
           <div className="sidebar-actions">
             <button type="button" className="btn btn--sm btn--primary" onClick={onAddControlPoint}>
@@ -124,9 +136,6 @@ export function AppSidebar({
             <button type="button" className="btn btn--sm btn--subtle" onClick={onToggleContinuity}>
               Cycle handle mode
               <span className="shortcut-badge">C</span>
-            </button>
-            <button type="button" className="btn btn--sm btn--subtle" onClick={onResetCurrentSpline}>
-              Reset current spline
             </button>
           </div>
           <div className="sidebar-actions">
@@ -155,6 +164,49 @@ export function AppSidebar({
           <p className="sidebar-hint">
             Handle mode: {selectedHandleMode ?? "none selected"} (Alt+drag temporarily breaks linkage).
           </p>
+          <label className="sidebar-field">
+            <span className="sidebar-field__label">Selected point coordinates (X, Y)</span>
+            {editMode === "outline" ? (
+              <p className="sidebar-hint">Outline Y is stored on one side and mirrored across centerline.</p>
+            ) : null}
+            <div className="sidebar-actions">
+              <input
+                className="sidebar-field__input"
+                type="number"
+                step="any"
+                value={coordDraft.x}
+                placeholder={selectedPointCoords ? String(selectedPointCoords.x) : "X"}
+                disabled={selectedPointCoords == null}
+                aria-label="Selected point X"
+                onChange={(e) => setCoordDraft((d) => ({ ...d, x: e.target.value }))}
+              />
+              <input
+                className="sidebar-field__input"
+                type="number"
+                step="any"
+                value={coordDraft.y}
+                placeholder={selectedPointCoords ? String(selectedPointCoords.y) : "Y"}
+                disabled={selectedPointCoords == null}
+                aria-label="Selected point Y"
+                onChange={(e) => setCoordDraft((d) => ({ ...d, y: e.target.value }))}
+              />
+              <button
+                type="button"
+                className="btn btn--sm btn--primary"
+                disabled={selectedPointCoords == null}
+                onClick={() => {
+                  const fallback = selectedPointCoords ?? { x: 0, y: 0 };
+                  const x = coordDraft.x.trim() === "" ? fallback.x : Number(coordDraft.x);
+                  const y = coordDraft.y.trim() === "" ? fallback.y : Number(coordDraft.y);
+                  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                  onSetSelectedPointCoords({ x, y });
+                  setCoordDraft({ x: "", y: "" });
+                }}
+              >
+                Apply coordinates
+              </button>
+            </div>
+          </label>
         </div>
       </details>
 
@@ -366,9 +418,6 @@ export function AppSidebar({
               <div className="sidebar-actions">
                 <button type="button" className="btn btn--sm btn--primary" onClick={onFixSectionOrder}>
                   Sort sections by station
-                </button>
-                <button type="button" className="btn btn--sm btn--subtle" onClick={onResetCurrentSpline}>
-                  Reset current spline
                 </button>
               </div>
             </>

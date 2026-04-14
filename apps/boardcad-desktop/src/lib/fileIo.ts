@@ -45,6 +45,44 @@ function triggerDownload(filename: string, body: BlobPart, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+type SaveMethod = "picker" | "download";
+type SaveAsResult = { path: string; method: SaveMethod };
+
+function supportsSavePicker(): boolean {
+  return typeof window !== "undefined" && "showSaveFilePicker" in window;
+}
+
+async function pickSaveName(fallbackName: string): Promise<string | null> {
+  const typed = window.prompt("Choose a file name", fallbackName);
+  if (!typed) return null;
+  const trimmed = typed.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase().endsWith(".brd") ? trimmed : `${trimmed}.brd`;
+}
+
+export async function saveBoardTextAs(selected: string, body: string): Promise<SaveAsResult | null> {
+  if (supportsSavePicker()) {
+    const picker = (window as unknown as Window & {
+      showSaveFilePicker: (options: {
+        suggestedName?: string;
+        types?: Array<{ description: string; accept: Record<string, string[]> }>;
+      }) => Promise<FileSystemFileHandle>;
+    }).showSaveFilePicker;
+    const handle = await picker({
+      suggestedName: selected,
+      types: [{ description: "BoardCAD board", accept: { "text/plain": [".brd"] } }],
+    });
+    const stream = await handle.createWritable();
+    await stream.write(body);
+    await stream.close();
+    return { path: handle.name || selected, method: "picker" };
+  }
+  const name = await pickSaveName(selected);
+  if (!name) return null;
+  triggerDownload(name, body, "text/plain;charset=utf-8");
+  return { path: name, method: "download" };
+}
+
 export async function openBoardFromPicker(): Promise<{ path: string; data: Uint8Array } | null> {
   const file = await pickFile(".brd");
   if (!file) return null;

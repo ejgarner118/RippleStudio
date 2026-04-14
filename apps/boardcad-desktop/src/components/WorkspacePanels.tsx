@@ -1,17 +1,20 @@
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
+import type { BoardEditMode } from "../types/editMode";
 
 function PanelChrome({
   title,
   hint,
   onResetView,
   resetLabel = "Reset view",
+  headerActions,
   children,
 }: {
   title: string;
   hint?: string;
   onResetView?: () => void;
   resetLabel?: string;
+  headerActions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -31,6 +34,7 @@ function PanelChrome({
             {resetLabel}
           </button>
         ) : null}
+        {headerActions}
       </header>
       <div className="panel__body">{children}</div>
     </section>
@@ -41,6 +45,8 @@ const GROUP_ID = "ripple-studio-workspace";
 const PANEL_IDS = ["plan", "profile", "section", "three"] as const;
 
 type WorkspacePanelsProps = {
+  editMode: BoardEditMode;
+  onSetEditMode: (mode: BoardEditMode) => void;
   planCanvas: ReactNode;
   profileCanvas: ReactNode;
   sectionCanvas: ReactNode;
@@ -52,6 +58,8 @@ type WorkspacePanelsProps = {
 };
 
 export function WorkspacePanels({
+  editMode,
+  onSetEditMode,
   planCanvas,
   profileCanvas,
   sectionCanvas,
@@ -86,6 +94,15 @@ export function WorkspacePanels({
           hint="Outline footprint."
           onResetView={onResetPlanView}
           resetLabel="Reset panel"
+          headerActions={
+            <button
+              type="button"
+              className={`btn btn--sm ${editMode === "outline" ? "btn--primary" : "btn--subtle"}`}
+              onClick={() => onSetEditMode("outline")}
+            >
+              Outline edit
+            </button>
+          }
         >
           {planCanvas}
         </PanelChrome>
@@ -102,6 +119,24 @@ export function WorkspacePanels({
           hint="Deck and bottom rocker."
           onResetView={onResetProfileView}
           resetLabel="Reset panel"
+          headerActions={
+            <div className="panel__header-actions">
+              <button
+                type="button"
+                className={`btn btn--sm ${editMode === "deck" ? "btn--primary" : "btn--subtle"}`}
+                onClick={() => onSetEditMode("deck")}
+              >
+                Deck
+              </button>
+              <button
+                type="button"
+                className={`btn btn--sm ${editMode === "bottom" ? "btn--primary" : "btn--subtle"}`}
+                onClick={() => onSetEditMode("bottom")}
+              >
+                Bottom
+              </button>
+            </div>
+          }
         >
           {profileCanvas}
         </PanelChrome>
@@ -118,6 +153,15 @@ export function WorkspacePanels({
           hint="Rail shape at selected station."
           onResetView={onResetSectionView}
           resetLabel="Reset panel"
+          headerActions={
+            <button
+              type="button"
+              className={`btn btn--sm ${editMode === "section" ? "btn--primary" : "btn--subtle"}`}
+              onClick={() => onSetEditMode("section")}
+            >
+              Section edit
+            </button>
+          }
         >
           {sectionCanvas}
         </PanelChrome>

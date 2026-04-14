@@ -498,6 +498,12 @@ select:focus:not(:focus-visible) {
   flex: 1;
 }
 
+.panel__header-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
 .btn--panel-reset {
   flex-shrink: 0;
   padding: 0.2rem 0.5rem;
