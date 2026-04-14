@@ -30,7 +30,7 @@ import {
   RemoveCrossSectionCommand,
   RemoveControlPointCommand,
   ResetSplineToLineCommand,
-  SetControlPointContinuityCommand,
+  SetControlPointHandleModeCommand,
   SetCrossSectionPositionCommand,
   InsertControlPointCommand,
   MoveCrossSectionCommand,
@@ -39,6 +39,7 @@ import {
   t,
   type SplineEditTarget,
   type SplineTarget,
+  type HandleMode,
 } from "@boardcad/core";
 import {
   safeBoardFileBase,
@@ -98,6 +99,13 @@ const TEMPLATE_FILE_BY_PRESET: Record<TemplateFilePreset, string> = {
   fish: "Fish.brd",
   longboard: "LongBoard.brd",
 };
+
+export function templatePresetForNewBoard(preset: NewBoardPreset): TemplateFilePreset {
+  if (preset === "standard" || preset === "shortboard" || preset === "fish" || preset === "longboard") {
+    return preset;
+  }
+  return "standard";
+}
 
 const KEYBOARD_PAN_STEP_PX = 24;
 
@@ -475,7 +483,7 @@ export default function App() {
 
   const createNewBoardFromPreset = useCallback(
     async (preset: NewBoardPreset) => {
-      if (preset === "empty_advanced" || preset === "empty_guided") {
+      if (preset === "empty_advanced") {
         const nextBoard = createBlankBoard();
         stack.clear();
         bumpCmdNonce();
@@ -493,23 +501,17 @@ export default function App() {
           profileDeck: true,
           profileBottom: true,
         }));
-        if (preset === "empty_guided") {
-          setEmptyGuidedStep(0);
-          setEditMode("outline");
-        } else {
-          setEmptyGuidedStep(null);
-          setEditMode("deck");
-        }
+        setEmptyGuidedStep(null);
+        setEditMode("deck");
         setNewBoardOpen(false);
         bumpBoardRevision();
-        showToast(
-          preset === "empty_guided" ? "Blank board — follow the guided steps" : "Blank board ready",
-          "success",
-        );
+        showToast("Blank board ready", "success");
         return;
       }
 
-      const templateFile = TEMPLATE_FILE_BY_PRESET[preset];
+      const guidedFromStandard = preset === "empty_guided";
+      const templatePreset = templatePresetForNewBoard(preset);
+      const templateFile = TEMPLATE_FILE_BY_PRESET[templatePreset];
       const publicUrl = `/BoardTemplates/${templateFile}`;
       let nextBoard: BezierBoard | null = null;
       try {
@@ -560,12 +562,17 @@ export default function App() {
       setSelectedControlPoint(null);
       setSelectedControlPointKind(null);
       setIsDirty(true);
-      setEmptyGuidedStep(null);
-      setEditMode("deck");
+      if (guidedFromStandard) {
+        setEmptyGuidedStep(0);
+        setEditMode("outline");
+      } else {
+        setEmptyGuidedStep(null);
+        setEditMode("deck");
+      }
       setOverlays((o) => ({ ...o, profileDeck: true, profileBottom: true }));
       setNewBoardOpen(false);
       bumpBoardRevision();
-      showToast(`New ${preset} board`, "success");
+      showToast(guidedFromStandard ? "Guided setup started from Standard template" : `New ${preset} board`, "success");
     },
     [stack, showToast, bumpCmdNonce, bumpBoardRevision],
   );
@@ -960,13 +967,40 @@ export default function App() {
       showToast("Select a control point first.", "error");
       return;
     }
-    stack.push(new SetControlPointContinuityCommand(brd, [t]));
+    const k = getKnot(brd, t);
+    if (!k) return;
+    const current = k.getHandleMode();
+    const next: HandleMode =
+      current === "independent" ? "aligned" : current === "aligned" ? "mirrored" : "independent";
+    stack.push(new SetControlPointHandleModeCommand(brd, [t], next));
     bumpCmdNonce();
     setIsDirty(true);
     bumpBoardRevision();
-    const k = getKnot(brd, t);
-    showToast(k?.isContinous() ? "Continuity enabled" : "Continuity disabled", "success");
+    showToast(`Handle mode: ${next}`, "success");
   }, [selectedTarget, stack, brd, showToast]);
+
+  const setHandleMode = useCallback(
+    (mode: HandleMode) => {
+      const t = selectedTarget();
+      if (!t) {
+        showToast("Select a control point first.", "error");
+        return;
+      }
+      stack.push(new SetControlPointHandleModeCommand(brd, [t], mode));
+      bumpCmdNonce();
+      setIsDirty(true);
+      bumpBoardRevision();
+      showToast(`Handle mode: ${mode}`, "success");
+    },
+    [selectedTarget, stack, brd, showToast],
+  );
+
+  const selectedHandleMode = (() => {
+    const t = selectedTarget();
+    if (!t) return null;
+    const k = getKnot(brd, t);
+    return k ? k.getHandleMode() : null;
+  })();
 
   const resetCurrentSpline = useCallback(() => {
     stack.push(new ResetSplineToLineCommand(brd, currentSplineTarget()));
@@ -1199,6 +1233,39 @@ export default function App() {
     [clampZoom],
   );
 
+  const resetPlanView = useCallback(() => {
+    setPlanZoom(1);
+    setPlanPan({ x: 0, y: 0 });
+    setResetViewPlanNonce((n) => n + 1);
+  }, []);
+
+  const resetProfileView = useCallback(() => {
+    setProfileZoom(1);
+    setProfilePan({ x: 0, y: 0 });
+    setResetViewProfileNonce((n) => n + 1);
+  }, []);
+
+  const resetSectionView = useCallback(() => {
+    setSectionZoom(1);
+    setSectionPan({ x: 0, y: 0 });
+    setResetViewSectionNonce((n) => n + 1);
+  }, []);
+
+  const reset2dViews = useCallback(() => {
+    resetPlanView();
+    resetProfileView();
+    resetSectionView();
+  }, [resetPlanView, resetProfileView, resetSectionView]);
+
+  const reset3dView = useCallback(() => {
+    setViewReset3dNonce((n) => n + 1);
+  }, []);
+
+  const resetAllViews = useCallback(() => {
+    reset2dViews();
+    reset3dView();
+  }, [reset2dViews, reset3dView]);
+
   const canUndo = stack.canUndo();
   const canRedo = stack.canRedo();
   const editModeLabel =
@@ -1215,10 +1282,6 @@ export default function App() {
       : `#${selectedControlPoint + 1}${
           selectedControlPointKind ? ` (${selectedControlPointKind})` : ""
         }`;
-  const hoveredPointLabel =
-    hoveredTarget == null
-      ? "None"
-      : `#${hoveredTarget.index + 1}${hoveredTarget.point ? ` (${hoveredTarget.point})` : ""}`;
   const geometryIssues = computeGeometryIssues();
 
   return (
@@ -1235,35 +1298,15 @@ export default function App() {
         onRedo={doRedo}
         canUndo={canUndo}
         canRedo={canRedo}
-        onFit2d={() => {
-          setPlanZoom(1);
-          setProfileZoom(1);
-          setSectionZoom(1);
-          setPlanPan({ x: 0, y: 0 });
-          setProfilePan({ x: 0, y: 0 });
-          setSectionPan({ x: 0, y: 0 });
-          setResetViewPlanNonce((n) => n + 1);
-          setResetViewProfileNonce((n) => n + 1);
-          setResetViewSectionNonce((n) => n + 1);
-        }}
-        onReset3d={() => setViewReset3dNonce((n) => n + 1)}
-        onResetAllViews={() => {
-          setPlanZoom(1);
-          setProfileZoom(1);
-          setSectionZoom(1);
-          setPlanPan({ x: 0, y: 0 });
-          setProfilePan({ x: 0, y: 0 });
-          setSectionPan({ x: 0, y: 0 });
-          setResetViewPlanNonce((n) => n + 1);
-          setResetViewProfileNonce((n) => n + 1);
-          setResetViewSectionNonce((n) => n + 1);
-          setViewReset3dNonce((n) => n + 1);
-        }}
+        onFit2d={reset2dViews}
+        onReset3d={reset3dView}
+        onResetAllViews={resetAllViews}
         theme={settings.theme}
         onThemeChange={(theme) => setSettings({ theme })}
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onBrdFormatHelp={() => setBrdHelpOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        onQuickHelp={() => setShortcutsOpen(true)}
       />
 
       <AppSidebar
@@ -1287,6 +1330,8 @@ export default function App() {
         onRemoveControlPoint={removeControlPoint}
         canRemoveControlPoint={currentSplinePointCount() > 2}
         onToggleContinuity={toggleContinuity}
+        selectedHandleMode={selectedHandleMode}
+        onSetHandleMode={setHandleMode}
         onResetCurrentSpline={resetCurrentSpline}
         validationIssues={geometryIssues}
         onFixSectionOrder={fixSectionOrder}
@@ -1303,15 +1348,6 @@ export default function App() {
           </span>
           <span className="context-chip">
             Selection: <strong>{selectedPointLabel}</strong>
-          </span>
-          <span className="context-chip">
-            Hover: <strong>{hoveredPointLabel}</strong>
-          </span>
-          <span className="context-chip">
-            Station: <strong>#{sectionIndex + 1}</strong>
-          </span>
-          <span className="context-chip">
-            Units: <strong>{brd.currentUnits === 0 ? "mm" : brd.currentUnits === 1 ? "cm" : "in"}</strong>
           </span>
           <span className="context-chip">
             Status: <strong>{isDirty ? "Unsaved changes" : "Saved"}</strong>
@@ -1350,21 +1386,15 @@ export default function App() {
         <div className="workspace__main">
           <WorkspacePanels
             onResetPlanView={() => {
-              setPlanZoom(1);
-              setPlanPan({ x: 0, y: 0 });
-              setResetViewPlanNonce((n) => n + 1);
+              resetPlanView();
             }}
             onResetProfileView={() => {
-              setProfileZoom(1);
-              setProfilePan({ x: 0, y: 0 });
-              setResetViewProfileNonce((n) => n + 1);
+              resetProfileView();
             }}
             onResetSectionView={() => {
-              setSectionZoom(1);
-              setSectionPan({ x: 0, y: 0 });
-              setResetViewSectionNonce((n) => n + 1);
+              resetSectionView();
             }}
-            onReset3dView={() => setViewReset3dNonce((n) => n + 1)}
+            onReset3dView={() => reset3dView()}
             planCanvas={
               <canvas
                 ref={canvasPlanRef}

@@ -83,8 +83,9 @@ export function WorkspacePanels({
       >
         <PanelChrome
           title="Plan"
-          hint="Half-outline from the file and mirrored rail (full board footprint)."
+          hint="Outline footprint."
           onResetView={onResetPlanView}
+          resetLabel="Reset panel"
         >
           {planCanvas}
         </PanelChrome>
@@ -98,8 +99,9 @@ export function WorkspacePanels({
       >
         <PanelChrome
           title="Profile"
-          hint="Deck and bottom: length versus rocker (side view)."
+          hint="Deck and bottom rocker."
           onResetView={onResetProfileView}
+          resetLabel="Reset panel"
         >
           {profileCanvas}
         </PanelChrome>
@@ -113,8 +115,9 @@ export function WorkspacePanels({
       >
         <PanelChrome
           title="Cross-section"
-          hint="Rail shape at the selected station along the board."
+          hint="Rail shape at selected station."
           onResetView={onResetSectionView}
+          resetLabel="Reset panel"
         >
           {sectionCanvas}
         </PanelChrome>
@@ -128,8 +131,9 @@ export function WorkspacePanels({
       >
         <PanelChrome
           title="3D preview"
-          hint="Left drag: orbit · Right drag: pan · Middle or wheel: zoom · Loft when enabled in sidebar."
+          hint="Orbit, pan, and zoom."
           onResetView={onReset3dView}
+          resetLabel="Reset panel"
         >
           {threeCanvas}
         </PanelChrome>

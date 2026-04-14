@@ -2,6 +2,7 @@ import type { BoardCommand } from "../undo/commandStack.js";
 import type { BezierBoard } from "../model/bezierBoard.js";
 import { BezierBoardCrossSection } from "../model/bezierBoardCrossSection.js";
 import { BezierKnot } from "../model/bezierKnot.js";
+import type { HandleMode } from "../model/bezierKnot.js";
 import type { BezierSpline } from "../model/bezierSpline.js";
 
 export type SplineEditTarget =
@@ -200,7 +201,12 @@ function enforceHalfSpace(sp: BezierSpline, minX: number, minY: number): void {
 
 function stabilizeSpline(targetKind: SplineTarget["kind"], sp: BezierSpline): void {
   clampSplinePoints(sp);
-  enforceAnchorOrdering(sp);
+  // Section splines are edited in local cross-section space where interior anchors can
+  // legitimately move left/right during shaping. Forcing strict global X ordering there
+  // causes unrelated anchor drift during edits.
+  if (targetKind !== "section") {
+    enforceAnchorOrdering(sp);
+  }
   enforceTangentDirection(sp);
   if (targetKind === "outline") {
     enforceHalfSpace(sp, -MAX_ABS_COORD, 0);
@@ -539,6 +545,46 @@ export class SetControlPointContinuityCommand implements BoardCommand {
       if (!k) continue;
       k.setContinous(this.after[i] ?? false);
       i++;
+    }
+    this.board.checkAndFixContinousy(false, true);
+    this.board.setLocks();
+  }
+}
+
+export class SetControlPointHandleModeCommand implements BoardCommand {
+  readonly label = "Set handle mode";
+
+  private readonly before: HandleMode[] = [];
+
+  constructor(
+    private readonly board: BezierBoard,
+    private readonly targets: SplineEditTarget[],
+    private readonly afterMode: HandleMode,
+  ) {
+    for (const t of targets) {
+      const k = getKnot(board, t);
+      if (!k) continue;
+      this.before.push(k.getHandleMode());
+    }
+  }
+
+  undo(): void {
+    let i = 0;
+    for (const t of this.targets) {
+      const k = getKnot(this.board, t);
+      if (!k) continue;
+      k.setHandleMode(this.before[i] ?? "independent");
+      i++;
+    }
+    this.board.checkAndFixContinousy(false, true);
+    this.board.setLocks();
+  }
+
+  redo(): void {
+    for (const t of this.targets) {
+      const k = getKnot(this.board, t);
+      if (!k) continue;
+      k.setHandleMode(this.afterMode);
     }
     this.board.checkAndFixContinousy(false, true);
     this.board.setLocks();

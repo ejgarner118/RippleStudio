@@ -11,27 +11,26 @@ type KeyboardShortcutsModalProps = {
 function rowsForPlatform(): [string, string][] {
   const mod = primaryModifierLabel();
   return [
-    ["Open…", `${mod}+O`],
-    ["Save", `${mod}+S`],
-    ["Save as…", `${mod}+Shift+S`],
-  ["Export…", "Alt+E"],
-  ["Fit all 2D views (plan / profile / section)", "View menu → Fit 2D views"],
-  ["Reset 3D to frame board", "View menu → Reset 3D view"],
-  ["Reset every workspace view", "View menu → Reset all views"],
-  ["3D preview: orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
-  [
-    "2D views (plan / profile / section)",
-    "Wheel zooms (canvas focused) · Middle-drag / Alt+drag / touch-drag pan",
-  ],
-  ["Canvas keyboard", "Arrow keys pan · +/- zoom"],
-  ["Insert point after selection", "A"],
-  ["Remove control point", "Delete / Backspace"],
-  ["Toggle smooth corner", "C"],
-  ["Duplicate section", "Shift+D"],
-  ["Interpolate section", "Shift+I"],
-  ["Snap drag to 5-unit grid", "Hold Shift"],
+    ["File", "—"],
+    ["Import .brd…", `${mod}+O`],
+    ["Download .brd", `${mod}+S`],
+    ["Download as…", `${mod}+Shift+S`],
+    ["Export…", "Alt+E"],
+    ["Views", "—"],
+    ["Reset 2D framing", "View menu → Reset 2D framing"],
+    ["Reset 3D to frame board", "View menu → Reset 3D view"],
+    ["Reset all views", "View menu → Reset all views (2D + 3D)"],
+    ["3D orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
+    ["2D pan + zoom", "Wheel zoom · Middle-drag / Alt+drag pan · Arrow keys pan · +/- zoom"],
+    ["Editing", "—"],
+    ["Insert point after selection", "A"],
+    ["Remove control point", "Delete / Backspace"],
+    ["Cycle handle mode", "C"],
+    ["Duplicate cross-section", "Shift+D"],
+    ["Interpolate cross-section", "Shift+I"],
+    ["Snap drag to 5-unit grid", "Hold Shift"],
     ["Undo", `${mod}+Z`],
-    ["Redo", `${mod}+Y`],
+    ["Redo", `${mod}+Y / ${mod}+Shift+Z`],
   ];
 }
 
@@ -81,14 +80,22 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
               </tr>
             </thead>
             <tbody>
-              {rows.map(([action, keys]) => (
-                <tr key={action}>
-                  <td>{action}</td>
-                  <td>
-                    <kbd className="shortcuts-table__kbd">{keys}</kbd>
-                  </td>
-                </tr>
-              ))}
+              {rows.map(([action, keys]) =>
+                keys === "—" ? (
+                  <tr key={action}>
+                    <td colSpan={2} className="shortcuts-table__section">
+                      {action}
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={action}>
+                    <td>{action}</td>
+                    <td>
+                      <kbd className="shortcuts-table__kbd">{keys}</kbd>
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>

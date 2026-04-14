@@ -1,6 +1,10 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import type { BezierBoard, BBox2D, CommandStack } from "@boardcad/core";
 import {
+  LOCK_X_LESS,
+  LOCK_X_MORE,
+  LOCK_Y_LESS,
+  LOCK_Y_MORE,
   MoveControlPointsCommand,
   applyKnotSnapshot,
   getKnot,
@@ -24,6 +28,20 @@ import type { BoardEditMode } from "../types/editMode";
 import type { OverlayState } from "../types/overlays";
 
 type DragEdit = { target: SplineEditTarget; before: number[] };
+
+function clampTangentByLocks(
+  k: { points: Array<{ x: number; y: number }>; getTangentToPrevLocks: () => number; getTangentToNextLocks: () => number },
+  pointKind: "prev" | "next",
+): void {
+  const end = k.points[0]!;
+  const i = pointKind === "prev" ? 1 : 2;
+  const p = k.points[i]!;
+  const locks = pointKind === "prev" ? k.getTangentToPrevLocks() : k.getTangentToNextLocks();
+  if (locks & LOCK_X_MORE) p.x = Math.max(p.x, end.x);
+  if (locks & LOCK_X_LESS) p.x = Math.min(p.x, end.x);
+  if (locks & LOCK_Y_MORE) p.y = Math.max(p.y, end.y);
+  if (locks & LOCK_Y_LESS) p.y = Math.min(p.y, end.y);
+}
 
 function buildDragEdits(board: BezierBoard, target: SplineEditTarget): DragEdit[] {
   const out: DragEdit[] = [];
@@ -67,6 +85,8 @@ function applyDragDelta(
   edits: DragEdit[],
   dx: number,
   dy: number,
+  stabilizeDuringMove = true,
+  breakHandleLink = false,
 ): void {
   for (const { target, before } of edits) {
     const k = getKnot(brd, target);
@@ -84,7 +104,9 @@ function applyDragDelta(
     if (!k || !sk) return;
     const { xDiff, yDiff } = translateKnotByMasked(k, dx, dy);
     syncStringerSlaveFromMaster(k, sk, xDiff, yDiff);
-    stabilizeKeysForTargets([primary.target, secondary.target], brd);
+    if (stabilizeDuringMove) {
+      stabilizeKeysForTargets([primary.target, secondary.target], brd);
+    }
     return;
   }
 
@@ -103,14 +125,30 @@ function applyDragDelta(
       const oi = pointKind === "prev" ? 2 : 1;
       k.points[pi]!.x += dx;
       k.points[pi]!.y += dy;
-      if (k.isContinous()) {
+      clampTangentByLocks(k, pointKind);
+      const mode = k.getHandleMode();
+      if (!breakHandleLink && mode !== "independent") {
         const ex = k.points[0]!.x;
         const ey = k.points[0]!.y;
-        k.points[oi]!.x = ex - (k.points[pi]!.x - ex);
-        k.points[oi]!.y = ey - (k.points[pi]!.y - ey);
+        const vx = k.points[pi]!.x - ex;
+        const vy = k.points[pi]!.y - ey;
+        const len = Math.hypot(vx, vy);
+        if (len > 1e-9) {
+          const ux = vx / len;
+          const uy = vy / len;
+          const oppLen =
+            mode === "mirrored"
+              ? len
+              : Math.hypot(k.points[oi]!.x - ex, k.points[oi]!.y - ey);
+          k.points[oi]!.x = ex - ux * oppLen;
+          k.points[oi]!.y = ey - uy * oppLen;
+          clampTangentByLocks(k, pointKind === "prev" ? "next" : "prev");
+        }
       }
     }
-    stabilizeEditTargetSpline(brd, target);
+    if (stabilizeDuringMove) {
+      stabilizeEditTargetSpline(brd, target);
+    }
   }
 }
 
@@ -132,10 +170,15 @@ function snapshotsDiffer(a: number[], b: number[]): boolean {
 }
 
 type DragRef = {
+  view: "plan" | "profile" | "section";
   pointerId: number;
   edits: DragEdit[];
   originX: number;
   originY: number;
+  startClientX: number;
+  startClientY: number;
+  hasCrossedThreshold: boolean;
+  frozenBounds: BBox2D | null;
 } | null;
 
 type Pan2d = { x: number; y: number };
@@ -149,9 +192,11 @@ type PanSession = {
   startPanY: number;
 };
 
+const DRAG_START_THRESHOLD_PX = 4;
+
 function isPanPointer(e: React.PointerEvent<HTMLCanvasElement>): boolean {
-  // Web-friendly pan affordances: middle drag, alt+drag, or touch drag.
-  return e.button === 1 || (e.button === 0 && e.altKey) || e.pointerType === "touch";
+  // Web-friendly pan affordances: middle drag or alt+drag.
+  return e.button === 1 || (e.button === 0 && e.altKey);
 }
 
 export function useBoardCanvasEditing(opts: {
@@ -231,6 +276,9 @@ export function useBoardCanvasEditing(opts: {
         /* already released */
       }
       if (!d || d.pointerId !== pointerId) return;
+      if (d.view === "section" && d.hasCrossedThreshold) {
+        stabilizeKeysForTargets(d.edits.map((e) => e.target), brd);
+      }
       if (pushCommand) {
         const editsFull: KnotMoveEdit[] = [];
         for (const { target, before } of d.edits) {
@@ -305,10 +353,20 @@ export function useBoardCanvasEditing(opts: {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
+        view: "plan",
         pointerId: e.pointerId,
         edits: buildDragEdits(brd, t),
         originX: c.x,
         originY: c.y,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        hasCrossedThreshold: false,
+        frozenBounds: {
+          minX: planBounds.minX,
+          maxX: planBounds.maxX,
+          minY: planBounds.minY,
+          maxY: planBounds.maxY,
+        },
       };
     },
     [
@@ -364,11 +422,18 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       if (d.pointerId !== e.pointerId) return;
+      if (!d.hasCrossedThreshold) {
+        const startDx = e.clientX - d.startClientX;
+        const startDy = e.clientY - d.startClientY;
+        if (Math.hypot(startDx, startDy) < DRAG_START_THRESHOLD_PX) return;
+        d.hasCrossedThreshold = true;
+      }
+      const planBoundsForDrag = d.frozenBounds ?? planBounds;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
         e.currentTarget,
-        planBounds,
+        planBoundsForDrag,
         planPadPx,
         planZoom,
         planPan.x,
@@ -377,7 +442,7 @@ export function useBoardCanvasEditing(opts: {
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
       const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
-      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY, true, e.altKey);
       bumpBoardRevision();
     },
     [
@@ -472,10 +537,20 @@ export function useBoardCanvasEditing(opts: {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
+        view: "profile",
         pointerId: e.pointerId,
         edits: buildDragEdits(brd, t),
         originX: c.x,
         originY: c.y,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        hasCrossedThreshold: false,
+        frozenBounds: {
+          minX: profileStringerBounds.minX,
+          maxX: profileStringerBounds.maxX,
+          minY: profileStringerBounds.minY,
+          maxY: profileStringerBounds.maxY,
+        },
       };
     },
     [
@@ -531,11 +606,18 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       if (d.pointerId !== e.pointerId) return;
+      if (!d.hasCrossedThreshold) {
+        const startDx = e.clientX - d.startClientX;
+        const startDy = e.clientY - d.startClientY;
+        if (Math.hypot(startDx, startDy) < DRAG_START_THRESHOLD_PX) return;
+        d.hasCrossedThreshold = true;
+      }
+      const profileBoundsForDrag = d.frozenBounds ?? profileStringerBounds;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
         e.currentTarget,
-        profileStringerBounds,
+        profileBoundsForDrag,
         profilePadPx,
         profileZoom,
         profilePan.x,
@@ -544,7 +626,7 @@ export function useBoardCanvasEditing(opts: {
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
       const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
-      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY, true, e.altKey);
       bumpBoardRevision();
     },
     [
@@ -639,10 +721,20 @@ export function useBoardCanvasEditing(opts: {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       dragRef.current = {
+        view: "section",
         pointerId: e.pointerId,
         edits: buildDragEdits(brd, t),
         originX: c.x,
         originY: c.y,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        hasCrossedThreshold: false,
+        frozenBounds: {
+          minX: profileBounds.minX,
+          maxX: profileBounds.maxX,
+          minY: profileBounds.minY,
+          maxY: profileBounds.maxY,
+        },
       };
     },
     [
@@ -698,11 +790,18 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       if (d.pointerId !== e.pointerId) return;
+      if (!d.hasCrossedThreshold) {
+        const startDx = e.clientX - d.startClientX;
+        const startDy = e.clientY - d.startClientY;
+        if (Math.hypot(startDx, startDy) < DRAG_START_THRESHOLD_PX) return;
+        d.hasCrossedThreshold = true;
+      }
+      const sectionBounds = d.frozenBounds ?? profileBounds;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
         e.currentTarget,
-        profileBounds,
+        sectionBounds,
         profilePadPx,
         sectionZoom,
         sectionPan.x,
@@ -711,7 +810,7 @@ export function useBoardCanvasEditing(opts: {
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
       const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
-      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY);
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY, false, e.altKey);
       bumpBoardRevision();
     },
     [

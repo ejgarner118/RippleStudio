@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { APP_DISPLAY_NAME, APP_VERSION_LABEL } from "../constants/brand";
 import { useModalA11y } from "../hooks/useModalA11y";
+import { primaryModifierLabel } from "../lib/keyboardGuards";
 
 type AboutModalProps = {
   open: boolean;
@@ -8,6 +9,7 @@ type AboutModalProps = {
 };
 
 export function AboutModal({ open, onClose }: AboutModalProps) {
+  const mod = primaryModifierLabel();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
 
@@ -52,8 +54,8 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
             core library in this repository.
           </p>
           <p className="modal-dialog__hint">
-            Tip: Use <kbd>Ctrl</kbd>+<kbd>O</kbd> to open, <kbd>Ctrl</kbd>+<kbd>S</kbd>{" "}
-            to save, and <kbd>Alt</kbd>+<kbd>E</kbd> for export.
+            Tip: Use <kbd>{mod}</kbd>+<kbd>O</kbd> to import, <kbd>{mod}</kbd>+<kbd>S</kbd>{" "}
+            to download, and <kbd>Alt</kbd>+<kbd>E</kbd> for export.
           </p>
         </div>
         <div className="modal-dialog__footer">

@@ -20,9 +20,12 @@ export function useCanvasWheelZoom(
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      if (Math.abs(e.deltaY) < 0.5) return;
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const intensity = e.ctrlKey ? 0.4 : 1;
+      const clamped = Math.max(-3, Math.min(3, (e.deltaY / 120) * intensity));
+      const factor = Math.pow(1.12, -clamped);
       setZoom((z) => clampZoom(z * factor));
     };
     el.addEventListener("wheel", onWheel, { passive: false });

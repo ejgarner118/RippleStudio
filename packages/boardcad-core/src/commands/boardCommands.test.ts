@@ -7,9 +7,11 @@ import {
   MoveCrossSectionCommand,
   MoveControlPointsCommand,
   RemoveControlPointCommand,
+  SetControlPointHandleModeCommand,
   SetControlPointContinuityCommand,
   isProfileStringerEndPair,
   knotSnapshot,
+  stabilizeEditTargetSpline,
   syncStringerSlaveFromMaster,
   translateKnotBy,
   translateKnotByMasked,
@@ -67,6 +69,22 @@ describe("boardCommands", () => {
     expect(k.isContinous()).toBe(!before);
     cmd.undo();
     expect(k.isContinous()).toBe(before);
+  });
+
+  it("SetControlPointHandleModeCommand applies and undoes mode", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "mode.brd")).toBe(0);
+    const k = board.outline.getControlPointOrThrow(1);
+    k.setHandleMode("aligned");
+    const cmd = new SetControlPointHandleModeCommand(
+      board,
+      [{ kind: "outline", index: 1 }],
+      "mirrored",
+    );
+    cmd.redo();
+    expect(k.getHandleMode()).toBe("mirrored");
+    cmd.undo();
+    expect(k.getHandleMode()).toBe("aligned");
   });
 
   it("translateKnotByMasked respects stringer end masks (X locked, Y free)", () => {
@@ -137,5 +155,19 @@ describe("boardCommands", () => {
     cmd.undo();
     expect(board.crossSections[0]!.getPosition()).toBe(a);
     expect(board.crossSections[1]!.getPosition()).toBe(b);
+  });
+
+  it("section stabilization does not force anchor ordering", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "section-stable.brd")).toBe(0);
+    const cs = board.crossSections[0]!;
+    const sp = cs.getBezierSpline();
+    expect(sp.getNrOfControlPoints()).toBeGreaterThan(1);
+    const a0 = sp.getControlPointOrThrow(0).getEndPoint();
+    const a1 = sp.getControlPointOrThrow(1).getEndPoint();
+    const movedX = a0.x;
+    a1.x = movedX;
+    stabilizeEditTargetSpline(board, { kind: "section", sectionIndex: 0, index: 1 });
+    expect(sp.getControlPointOrThrow(1).getEndPoint().x).toBe(movedX);
   });
 });

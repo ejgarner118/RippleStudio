@@ -7,7 +7,7 @@ type EmptyGuidedBannerProps = {
 const STEPS = [
   {
     title: "Step 1 — Plan outline",
-    body: "Shape length and width on the plan view. Use control points to refine the half-outline; the opposite rail mirrors automatically.",
+    body: "Starting from the Standard template, shape length and width on the plan view. Use control points to refine the half-outline; the opposite rail mirrors automatically.",
   },
   {
     title: "Step 2 — Deck & bottom",

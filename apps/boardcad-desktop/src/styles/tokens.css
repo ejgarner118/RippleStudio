@@ -10,6 +10,13 @@
   --space-4: 1rem;
   --space-5: 1.25rem;
   --space-6: 1.5rem;
+  --space-stack-sm: 0.5rem;
+  --space-stack-md: 0.875rem;
+  --space-stack-lg: 1.25rem;
+
+  --text-xs: 0.74rem;
+  --text-sm: 0.82rem;
+  --text-md: 0.9rem;
 
   --radius-sm: 6px;
   --radius-md: 10px;

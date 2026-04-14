@@ -103,7 +103,7 @@ export function ExportModal({ open, onClose, onExport }: ExportModalProps) {
               }
             }}
           >
-            {isBusy ? "Exporting..." : "Continue..."}
+            {isBusy ? "Exporting..." : "Export"}
           </button>
         </div>
       </div>

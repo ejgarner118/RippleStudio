@@ -5,6 +5,7 @@ export const LOCK_X_MORE = 0x0001;
 export const LOCK_X_LESS = 0x0010;
 export const LOCK_Y_MORE = 0x0100;
 export const LOCK_Y_LESS = 0x1000;
+export type HandleMode = "independent" | "aligned" | "mirrored";
 
 export class BezierKnot {
   /** [end, tangentPrev, tangentNext] */
@@ -14,6 +15,7 @@ export class BezierKnot {
     { x: 0, y: 0 },
   ];
   private continuous = false;
+  private mirrored = false;
   private other = false;
   X_mask = 1;
   Y_mask = 1;
@@ -23,9 +25,24 @@ export class BezierKnot {
 
   setContinous(c: boolean): void {
     this.continuous = c;
+    // Legacy compatibility: historical continuity was mirrored.
+    this.mirrored = c;
   }
   isContinous(): boolean {
     return this.continuous;
+  }
+  setHandleMode(mode: HandleMode): void {
+    if (mode === "independent") {
+      this.continuous = false;
+      this.mirrored = false;
+      return;
+    }
+    this.continuous = true;
+    this.mirrored = mode === "mirrored";
+  }
+  getHandleMode(): HandleMode {
+    if (!this.continuous) return "independent";
+    return this.mirrored ? "mirrored" : "aligned";
   }
   setOther(o: boolean): void {
     this.other = o;
@@ -52,8 +69,14 @@ export class BezierKnot {
   setTangentToPrevLocks(locks: number): void {
     this.tangent1Locks = locks;
   }
+  getTangentToPrevLocks(): number {
+    return this.tangent1Locks;
+  }
   setTangentToNextLocks(locks: number): void {
     this.tangent2Locks = locks;
+  }
+  getTangentToNextLocks(): number {
+    return this.tangent2Locks;
   }
   addTangentToNextLocks(locks: number): void {
     this.tangent2Locks |= locks;
@@ -84,6 +107,7 @@ export class BezierKnot {
       this.points[i].y = other.points[i].y;
     }
     this.continuous = other.continuous;
+    this.mirrored = other.mirrored;
     this.other = other.other;
     this.X_mask = other.X_mask;
     this.Y_mask = other.Y_mask;

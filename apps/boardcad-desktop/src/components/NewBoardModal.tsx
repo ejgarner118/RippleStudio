@@ -25,8 +25,8 @@ const TEMPLATE_OPTIONS: { id: NewBoardPreset; label: string; hint: string }[] = 
 const BLANK_OPTIONS: { id: NewBoardPreset; label: string; hint: string }[] = [
   {
     id: "empty_guided",
-    label: "Blank — guided setup",
-    hint: "Minimal board with step-by-step hints (outline → profile → sections).",
+    label: "Guided setup (Standard base)",
+    hint: "Loads the Standard template, then guides edits step-by-step (outline → profile → sections).",
   },
   {
     id: "empty_advanced",
@@ -92,7 +92,7 @@ export function NewBoardModal({ open, onClose, onCreate }: NewBoardModalProps) {
               </label>
             ))}
           </div>
-          <p className="modal-dialog__hint modal-dialog__hint--strong">Start from nothing</p>
+          <p className="modal-dialog__hint modal-dialog__hint--strong">Custom starts</p>
           <div className="export-format-list" role="radiogroup" aria-label="Blank board options">
             {BLANK_OPTIONS.map((o) => (
               <label key={o.id} className="export-format-row">

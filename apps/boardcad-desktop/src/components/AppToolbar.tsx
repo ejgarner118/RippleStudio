@@ -31,6 +31,7 @@ type AppToolbarProps = {
   onKeyboardShortcuts: () => void;
   onBrdFormatHelp: () => void;
   onAbout: () => void;
+  onQuickHelp: () => void;
 };
 
 function fileNameFromPath(p: string): string {
@@ -59,6 +60,7 @@ export function AppToolbar({
   onKeyboardShortcuts,
   onBrdFormatHelp,
   onAbout,
+  onQuickHelp,
 }: AppToolbarProps) {
   const menubarRef = useRef<HTMLElement | null>(null);
   const mod = primaryModifierLabel();
@@ -149,7 +151,7 @@ export function AppToolbar({
                   onOpen();
                 }}
               >
-                Open… <span className="menu__kbd">{mod}+O</span>
+                Import .brd… <span className="menu__kbd">{mod}+O</span>
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -158,7 +160,7 @@ export function AppToolbar({
             </li>
             {recentFiles.length === 0 ? (
               <li className="menu__hint" role="none">
-                No recent files
+                No recent session files
               </li>
             ) : (
               recentFiles.map((p) => (
@@ -191,7 +193,7 @@ export function AppToolbar({
                   onSave();
                 }}
               >
-                Save <span className="menu__kbd">{mod}+S</span>
+                Download .brd <span className="menu__kbd">{mod}+S</span>
               </button>
             </li>
             <li role="none">
@@ -206,7 +208,7 @@ export function AppToolbar({
                   onSaveAs();
                 }}
               >
-                Save as… <span className="menu__kbd">{mod}+Shift+S</span>
+                Download as… <span className="menu__kbd">{mod}+Shift+S</span>
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -252,13 +254,13 @@ export function AppToolbar({
                 role="menuitem"
                 className="menu__item"
                 disabled={!canRedo}
-                aria-keyshortcuts="Control+Y Meta+Y"
+                aria-keyshortcuts="Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z"
                 onClick={() => {
                   closeMenus();
                   onRedo();
                 }}
               >
-                Redo <span className="menu__kbd">{mod}+Y</span>
+                Redo <span className="menu__kbd">{mod}+Y / {mod}+Shift+Z</span>
               </button>
             </li>
           </ul>
@@ -277,7 +279,7 @@ export function AppToolbar({
                   onFit2d();
                 }}
               >
-                Fit 2D views
+                Reset 2D framing
               </button>
             </li>
             <li role="none">
@@ -303,7 +305,7 @@ export function AppToolbar({
                   onResetAllViews();
                 }}
               >
-                Reset all views
+                Reset all views (2D + 3D)
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -381,7 +383,7 @@ export function AppToolbar({
                   onBrdFormatHelp();
                 }}
               >
-                About <code>.brd</code> files…
+                BRD format help…
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -401,6 +403,18 @@ export function AppToolbar({
           </ul>
         </details>
       </nav>
+      <button
+        type="button"
+        className="icon-btn app-toolbar__quick-help"
+        aria-label="Open keyboard shortcuts"
+        title="Keyboard shortcuts and editing help"
+        onClick={() => {
+          closeMenus();
+          onQuickHelp();
+        }}
+      >
+        ?
+      </button>
     </header>
   );
 }
