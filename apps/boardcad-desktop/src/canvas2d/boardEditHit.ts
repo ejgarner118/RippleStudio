@@ -129,7 +129,8 @@ export function pickEditTarget(
     const cs = brd.crossSections[sectionIndex];
     if (!cs) return null;
     const sp = cs.getBezierSpline();
-    const hit = nearestControlPointPoint(sp, x, y, radiusBoard);
+    // Prefer Bézier handles over anchors when distances are similar (easier to grab tangents).
+    const hit = nearestControlPointPoint(sp, x, y, radiusBoard, true);
     return hit == null
       ? null
       : { kind: "section", sectionIndex, index: hit.index, point: hit.point };

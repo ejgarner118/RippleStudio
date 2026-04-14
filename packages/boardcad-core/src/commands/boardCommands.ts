@@ -3,7 +3,8 @@ import type { BezierBoard } from "../model/bezierBoard.js";
 import { BezierBoardCrossSection } from "../model/bezierBoardCrossSection.js";
 import { BezierKnot } from "../model/bezierKnot.js";
 import type { HandleMode } from "../model/bezierKnot.js";
-import type { BezierSpline } from "../model/bezierSpline.js";
+import { BezierSpline } from "../model/bezierSpline.js";
+import { refineCrossSectionRail } from "../board/railRefine.js";
 
 export type SplineEditTarget =
   | { kind: "outline"; index: number; point?: "end" | "prev" | "next" }
@@ -473,6 +474,48 @@ export class InsertControlPointCommand implements BoardCommand {
     if (!sp) return;
     applySplineSnapshot(sp, this.after);
     stabilizeTargetSpline(this.board, this.target);
+  }
+}
+
+export class RefineCrossSectionRailCommand implements BoardCommand {
+  readonly label: string;
+
+  private readonly before: SerializedKnot[];
+  private readonly after: SerializedKnot[];
+
+  constructor(
+    private readonly board: BezierBoard,
+    private readonly sectionIndex: number,
+    kind: "soften" | "harden",
+  ) {
+    this.label = kind === "soften" ? "Soften rail" : "Harden rail";
+    const cs = board.crossSections[sectionIndex];
+    if (!cs) throw new Error("Invalid section index");
+    const sp = cs.getBezierSpline();
+    this.before = snapshotSpline(sp);
+    const temp = new BezierSpline();
+    applySplineSnapshot(
+      temp,
+      this.before.map((row) => ({ ...row, p: [...row.p] })),
+    );
+    refineCrossSectionRail(temp, kind);
+    this.after = snapshotSpline(temp);
+  }
+
+  undo(): void {
+    const sp = this.board.crossSections[this.sectionIndex]?.getBezierSpline();
+    if (!sp) return;
+    applySplineSnapshot(sp, this.before);
+    stabilizeTargetSpline(this.board, { kind: "section", sectionIndex: this.sectionIndex });
+    this.board.setLocks();
+  }
+
+  redo(): void {
+    const sp = this.board.crossSections[this.sectionIndex]?.getBezierSpline();
+    if (!sp) return;
+    applySplineSnapshot(sp, this.after);
+    stabilizeTargetSpline(this.board, { kind: "section", sectionIndex: this.sectionIndex });
+    this.board.setLocks();
   }
 }
 

@@ -33,7 +33,7 @@ export class BezierBoard {
   cutterStartPos = [0, 0, 0];
   blankTailPos = [0, 0, 0];
   boardStartPos = [0, 0, 0];
-  currentUnits = 0;
+  currentUnits = 2;
   noseRockerOneFoot = 0;
   tailRockerOneFoot = 0;
   showOriginalBoard = true;
@@ -110,7 +110,7 @@ export class BezierBoard {
     this.cutterStartPos = [0, 0, 0];
     this.blankTailPos = [0, 0, 0];
     this.boardStartPos = [0, 0, 0];
-    this.currentUnits = 0;
+    this.currentUnits = 2;
     this.noseRockerOneFoot = 0;
     this.tailRockerOneFoot = 0;
     this.showOriginalBoard = true;

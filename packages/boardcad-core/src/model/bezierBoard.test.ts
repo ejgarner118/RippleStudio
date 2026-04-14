@@ -4,6 +4,11 @@ import { loadBrdFromText } from "../brd/brdReader.js";
 import { MINI_BOARD_BRD } from "../defaultBoards.js";
 
 describe("BezierBoard / domain", () => {
+  it("defaults to inch file units", () => {
+    const brd = new BezierBoard();
+    expect(brd.currentUnits).toBe(2);
+  });
+
   it("setLocks runs without throw after load", () => {
     const brd = new BezierBoard();
     loadBrdFromText(brd, MINI_BOARD_BRD, "x.brd");

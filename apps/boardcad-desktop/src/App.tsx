@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   AddCrossSectionCommand,
-  applyRailShapeTemplate,
   BezierBoard,
   CommandStack,
   createBlankBoard,
@@ -34,8 +33,10 @@ import {
   InsertControlPointCommand,
   MoveCrossSectionCommand,
   MoveControlPointsCommand,
+  RefineCrossSectionRailCommand,
   cloneCrossSection,
   setLocale,
+  stabilizeEditTargetSpline,
   t,
   type SplineEditTarget,
   type SplineTarget,
@@ -83,6 +84,12 @@ import {
   writeTextFromDialogPath,
 } from "./lib/fileIo";
 import { defaultOverlays, type OverlayState } from "./types/overlays";
+import {
+  defaultReferenceImageLayer,
+  defaultReferenceImageState,
+  type ReferenceImageLayer,
+  type ReferenceImageState,
+} from "./types/referenceImage";
 import type { BoardEditMode } from "./types/editMode";
 import { APP_WINDOW_TITLE_SUFFIX } from "./constants/brand";
 import "./App.css";
@@ -151,6 +158,11 @@ export default function App() {
   const [canvasLayoutNonce, setCanvasLayoutNonce] = useState(0);
   const [viewReset3dNonce, setViewReset3dNonce] = useState(0);
   const [emptyGuidedStep, setEmptyGuidedStep] = useState<number | null>(null);
+  const [referenceImages, setReferenceImages] = useState<ReferenceImageState>(() =>
+    defaultReferenceImageState(),
+  );
+  const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
+  const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
 
   const orbitRef = useRef<OrbitControlsApi | null>(null);
 
@@ -161,6 +173,44 @@ export default function App() {
   useEffect(() => {
     setLocale("en");
   }, []);
+
+  useEffect(() => {
+    const url = referenceImages.plan.objectUrl;
+    if (!url) {
+      setPlanRefImg(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      setPlanRefImg(img);
+      bumpBoardRevision();
+    };
+    img.onerror = () => setPlanRefImg(null);
+    img.src = url;
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [referenceImages.plan.objectUrl]);
+
+  useEffect(() => {
+    const url = referenceImages.profile.objectUrl;
+    if (!url) {
+      setProfileRefImg(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      setProfileRefImg(img);
+      bumpBoardRevision();
+    };
+    img.onerror = () => setProfileRefImg(null);
+    img.src = url;
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [referenceImages.profile.objectUrl]);
 
   useEffect(() => {
     if (editMode === "deck") {
@@ -305,6 +355,7 @@ export default function App() {
       planPan.x,
       planPan.y,
       markerStateFor("outline"),
+      { layer: referenceImages.plan, img: planRefImg },
     );
   }, [
     brd,
@@ -319,6 +370,8 @@ export default function App() {
     resetViewPlanNonce,
     canvasLayoutNonce,
     boardRevision,
+    referenceImages.plan,
+    planRefImg,
   ]);
 
   useEffect(() => {
@@ -339,6 +392,7 @@ export default function App() {
       profilePan.y,
       markerStateFor("deck"),
       markerStateFor("bottom"),
+      { layer: referenceImages.profile, img: profileRefImg },
     );
   }, [
     brd,
@@ -353,6 +407,8 @@ export default function App() {
     resetViewProfileNonce,
     canvasLayoutNonce,
     boardRevision,
+    referenceImages.profile,
+    profileRefImg,
   ]);
 
   useEffect(() => {
@@ -882,25 +938,98 @@ export default function App() {
     bumpBoardRevision();
   }, [brd, sectionIndex, stack]);
 
-  const addSectionTemplate = useCallback(
-    (template: "current" | "soft" | "hard") => {
-      const cs = createDefaultCrossSection(brd);
-      const sp = cs.getBezierSpline();
-      if (template === "soft") {
-        applyRailShapeTemplate(sp, "soft");
-      } else if (template === "hard") {
-        applyRailShapeTemplate(sp, "hard");
+  const addSectionFromCurrentTemplate = useCallback(() => {
+    const cs = createDefaultCrossSection(brd);
+    const insertAt = Math.min(sectionIndex + 1, brd.crossSections.length);
+    stack.push(new AddCrossSectionCommand(brd, insertAt, cs));
+    bumpCmdNonce();
+    setSectionIndex(insertAt);
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Section added from current board", "success");
+  }, [brd, sectionIndex, stack, showToast]);
+
+  const refineActiveSectionRail = useCallback(
+    (kind: "soften" | "harden") => {
+      const cs = brd.crossSections[sectionIndex];
+      if (!cs || cs.getBezierSpline().getNrOfControlPoints() < 2) {
+        showToast("Select a section with at least two control points.", "error");
+        return;
       }
-      const insertAt = Math.min(sectionIndex + 1, brd.crossSections.length);
-      stack.push(new AddCrossSectionCommand(brd, insertAt, cs));
+      stack.push(new RefineCrossSectionRailCommand(brd, sectionIndex, kind));
       bumpCmdNonce();
-      setSectionIndex(insertAt);
       setIsDirty(true);
       bumpBoardRevision();
-      showToast("Template section added", "success");
+      showToast(kind === "soften" ? "Rail softened" : "Rail hardened", "success");
     },
     [brd, sectionIndex, stack, showToast],
   );
+
+  const pickPlanReferenceImage = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      setReferenceImages((prev) => {
+        if (prev.plan.objectUrl) URL.revokeObjectURL(prev.plan.objectUrl);
+        return {
+          ...prev,
+          plan: { ...prev.plan, objectUrl: URL.createObjectURL(f), enabled: true },
+        };
+      });
+      bumpBoardRevision();
+    };
+    input.click();
+  }, []);
+
+  const pickProfileReferenceImage = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      setReferenceImages((prev) => {
+        if (prev.profile.objectUrl) URL.revokeObjectURL(prev.profile.objectUrl);
+        return {
+          ...prev,
+          profile: { ...prev.profile, objectUrl: URL.createObjectURL(f), enabled: true },
+        };
+      });
+      bumpBoardRevision();
+    };
+    input.click();
+  }, []);
+
+  const clearPlanReferenceImage = useCallback(() => {
+    setReferenceImages((prev) => {
+      if (prev.plan.objectUrl) URL.revokeObjectURL(prev.plan.objectUrl);
+      return { ...prev, plan: defaultReferenceImageLayer() };
+    });
+    setPlanRefImg(null);
+    bumpBoardRevision();
+  }, []);
+
+  const clearProfileReferenceImage = useCallback(() => {
+    setReferenceImages((prev) => {
+      if (prev.profile.objectUrl) URL.revokeObjectURL(prev.profile.objectUrl);
+      return { ...prev, profile: defaultReferenceImageLayer() };
+    });
+    setProfileRefImg(null);
+    bumpBoardRevision();
+  }, []);
+
+  const patchPlanReference = useCallback((patch: Partial<ReferenceImageLayer>) => {
+    setReferenceImages((prev) => ({ ...prev, plan: { ...prev.plan, ...patch } }));
+    bumpBoardRevision();
+  }, []);
+
+  const patchProfileReference = useCallback((patch: Partial<ReferenceImageLayer>) => {
+    setReferenceImages((prev) => ({ ...prev, profile: { ...prev.profile, ...patch } }));
+    bumpBoardRevision();
+  }, []);
 
   const currentSplineTarget = useCallback((): SplineTarget => {
     if (editMode === "outline") return { kind: "outline" };
@@ -1062,8 +1191,7 @@ export default function App() {
         k.points[pi]!.x = next.x;
         k.points[pi]!.y = next.y;
       }
-      brd.checkAndFixContinousy(false, true);
-      brd.setLocks();
+      stabilizeEditTargetSpline(brd, t);
       const after = [k.points[0]!.x, k.points[0]!.y, k.points[1]!.x, k.points[1]!.y, k.points[2]!.x, k.points[2]!.y];
       stack.push(new MoveControlPointsCommand(brd, [{ target: t, before, after }]));
       bumpCmdNonce();
@@ -1388,7 +1516,16 @@ export default function App() {
         onInterpolateSection={interpolateSection}
         onMoveSectionEarlier={moveSectionEarlier}
         onMoveSectionLater={moveSectionLater}
-        onAddSectionTemplate={addSectionTemplate}
+        onAddSectionFromCurrentTemplate={addSectionFromCurrentTemplate}
+        onSoftenRail={() => refineActiveSectionRail("soften")}
+        onHardenRail={() => refineActiveSectionRail("harden")}
+        referenceImages={referenceImages}
+        onPickPlanReferenceImage={pickPlanReferenceImage}
+        onPickProfileReferenceImage={pickProfileReferenceImage}
+        onClearPlanReferenceImage={clearPlanReferenceImage}
+        onClearProfileReferenceImage={clearProfileReferenceImage}
+        onPatchPlanReference={patchPlanReference}
+        onPatchProfileReference={patchProfileReference}
         selectedControlPoint={selectedControlPoint}
         selectedControlPointKind={selectedControlPointKind}
         selectedPointCoords={selectedPointCoords}
@@ -1476,6 +1613,7 @@ export default function App() {
                 onPointerMove={canvasPtr.onPlanPointerMove}
                 onPointerUp={canvasPtr.onPlanPointerUp}
                 onPointerCancel={canvasPtr.onPlanPointerCancel}
+                onLostPointerCapture={canvasPtr.onCanvasLostPointerCapture}
                 onKeyDown={(e) => handleCanvasKeyPanZoom(e, setPlanZoom, setPlanPan)}
               />
             }
@@ -1492,6 +1630,7 @@ export default function App() {
                 onPointerMove={canvasPtr.onProfilePointerMove}
                 onPointerUp={canvasPtr.onProfilePointerUp}
                 onPointerCancel={canvasPtr.onProfilePointerCancel}
+                onLostPointerCapture={canvasPtr.onCanvasLostPointerCapture}
                 onKeyDown={(e) => handleCanvasKeyPanZoom(e, setProfileZoom, setProfilePan)}
               />
             }
@@ -1508,6 +1647,7 @@ export default function App() {
                 onPointerMove={canvasPtr.onSectionPointerMove}
                 onPointerUp={canvasPtr.onSectionPointerUp}
                 onPointerCancel={canvasPtr.onSectionPointerCancel}
+                onLostPointerCapture={canvasPtr.onCanvasLostPointerCapture}
                 onKeyDown={(e) => handleCanvasKeyPanZoom(e, setSectionZoom, setSectionPan)}
               />
             }

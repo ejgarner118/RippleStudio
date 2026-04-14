@@ -1,5 +1,6 @@
 import type { BezierBoard } from "@boardcad/core";
 import type { BBox2D } from "@boardcad/core";
+import { gridMajorStepModelUnits } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
 import { PROFILE_PAD_PX } from "../constants";
 import {
@@ -51,7 +52,9 @@ export function renderSectionView(
   const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
-    drawMetricGrid(ctx, tf, ch, profileBounds, 10);
+    const g = gridMajorStepModelUnits(brd.currentUnits);
+    const sectionStep = brd.currentUnits === 2 ? Math.max(0.25, g * 0.25) : brd.currentUnits === 1 ? Math.max(1, g * 0.2) : Math.max(5, g * 0.2);
+    drawMetricGrid(ctx, tf, ch, profileBounds, sectionStep);
   }
 
   strokePolyline(ctx, profileXy, tf, ch, { color: "#2d6a4f", width: 2 });

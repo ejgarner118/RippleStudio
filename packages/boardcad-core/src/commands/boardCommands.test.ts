@@ -6,6 +6,7 @@ import {
   InsertControlPointCommand,
   MoveCrossSectionCommand,
   MoveControlPointsCommand,
+  RefineCrossSectionRailCommand,
   RemoveControlPointCommand,
   SetControlPointHandleModeCommand,
   SetControlPointContinuityCommand,
@@ -169,5 +170,17 @@ describe("boardCommands", () => {
     a1.x = movedX;
     stabilizeEditTargetSpline(board, { kind: "section", sectionIndex: 0, index: 1 });
     expect(sp.getControlPointOrThrow(1).getEndPoint().x).toBe(movedX);
+  });
+
+  it("RefineCrossSectionRailCommand undo restores section spline", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "rail-ref.brd")).toBe(0);
+    const sp = board.crossSections[0]!.getBezierSpline();
+    const before = knotSnapshot(sp.getControlPointOrThrow(1));
+    const cmd = new RefineCrossSectionRailCommand(board, 0, "soften");
+    cmd.redo();
+    expect(knotSnapshot(sp.getControlPointOrThrow(1))).not.toEqual(before);
+    cmd.undo();
+    expect(knotSnapshot(sp.getControlPointOrThrow(1))).toEqual(before);
   });
 });

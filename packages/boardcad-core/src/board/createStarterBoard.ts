@@ -6,6 +6,7 @@ import {
   SHORTBOARD_TEMPLATE_BRD,
   STARTER_BOARD_BRD,
 } from "../defaultBoards.js";
+import { convertBoardMmToInches } from "../geometry/boardUnitScale.js";
 import { BezierBoard } from "../model/bezierBoard.js";
 
 /** New document: starter geometry, clean path, Untitled name. */
@@ -22,6 +23,7 @@ export function createBlankBoard(): BezierBoard {
   b.storedScalars = {};
   b.checkAndFixContinousy(false, true);
   b.setLocks();
+  convertBoardMmToInches(b);
   return b;
 }
 
@@ -43,5 +45,6 @@ export function createBoardFromTemplate(preset: NewBoardTemplatePreset): BezierB
   b.storedScalars = {};
   b.checkAndFixContinousy(false, true);
   b.setLocks();
+  convertBoardMmToInches(b);
   return b;
 }

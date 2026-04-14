@@ -22,6 +22,7 @@ function rowsForPlatform(): [string, string][] {
     ["Reset all views", "View menu → Reset all views (2D + 3D)"],
     ["3D orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
     ["2D pan + zoom", "Wheel zoom · Middle-drag / Alt+drag pan · Arrow keys pan · +/- zoom"],
+    ["Plan / profile reference images", "Sidebar → View (import, opacity, scale, offset, rotation, flip)"],
     ["Editing", "—"],
     ["Insert point after selection", "A"],
     ["Remove control point", "Delete / Backspace"],

@@ -269,11 +269,41 @@ select:focus:not(:focus-visible) {
 /* ——— Sidebar ——— */
 .sidebar {
   grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--surface-sidebar);
   border-right: 1px solid var(--border-subtle);
-  padding: var(--space-4);
+  padding: 0;
   font-size: 0.9rem;
+  overflow: hidden;
+}
+
+.sidebar__scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.sidebar__sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  background: var(--surface-sidebar);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar__footer-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: var(--space-3) calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--surface-sidebar) 92%, var(--surface-panel));
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sidebar-section {

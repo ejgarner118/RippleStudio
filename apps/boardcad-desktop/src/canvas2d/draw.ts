@@ -248,21 +248,21 @@ export function drawGuidePoints(
   }
 }
 
-/** Grid in board units (mm) so screen spacing matches the shape scale (square in world space). */
+/** Grid in board file units (mm, cm, or inch) so screen spacing matches the shape scale. */
 export function drawMetricGrid(
   ctx: CanvasRenderingContext2D,
   tf: FitTransform,
   ch: number,
   bounds: BBox2D,
-  stepMm = 50,
+  stepModel = 50,
 ): void {
   ctx.strokeStyle = "#ddd";
   ctx.lineWidth = 1;
-  const loX = Math.floor(bounds.minX / stepMm) * stepMm;
-  const hiX = Math.ceil(bounds.maxX / stepMm) * stepMm;
-  const loY = Math.floor(bounds.minY / stepMm) * stepMm;
-  const hiY = Math.ceil(bounds.maxY / stepMm) * stepMm;
-  for (let wx = loX; wx <= hiX + 1e-6; wx += stepMm) {
+  const loX = Math.floor(bounds.minX / stepModel) * stepModel;
+  const hiX = Math.ceil(bounds.maxX / stepModel) * stepModel;
+  const loY = Math.floor(bounds.minY / stepModel) * stepModel;
+  const hiY = Math.ceil(bounds.maxY / stepModel) * stepModel;
+  for (let wx = loX; wx <= hiX + 1e-6; wx += stepModel) {
     const [x0, y0] = toCanvas(wx, bounds.minY, tf, ch);
     const [x1, y1] = toCanvas(wx, bounds.maxY, tf, ch);
     ctx.beginPath();
@@ -270,7 +270,7 @@ export function drawMetricGrid(
     ctx.lineTo(x1, y1);
     ctx.stroke();
   }
-  for (let wy = loY; wy <= hiY + 1e-6; wy += stepMm) {
+  for (let wy = loY; wy <= hiY + 1e-6; wy += stepModel) {
     const [x0, y0] = toCanvas(bounds.minX, wy, tf, ch);
     const [x1, y1] = toCanvas(bounds.maxX, wy, tf, ch);
     ctx.beginPath();

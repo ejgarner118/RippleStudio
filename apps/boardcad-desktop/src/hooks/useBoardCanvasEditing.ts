@@ -269,13 +269,13 @@ export function useBoardCanvasEditing(opts: {
   const finishDrag = useCallback(
     (canvas: HTMLCanvasElement, pointerId: number, pushCommand: boolean) => {
       const d = dragRef.current;
+      if (!d || d.pointerId !== pointerId) return;
       dragRef.current = null;
       try {
         canvas.releasePointerCapture(pointerId);
       } catch {
         /* already released */
       }
-      if (!d || d.pointerId !== pointerId) return;
       if (d.view === "section" && d.hasCrossedThreshold) {
         stabilizeKeysForTargets(d.edits.map((e) => e.target), brd);
       }
@@ -810,7 +810,9 @@ export function useBoardCanvasEditing(opts: {
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
       const gy = e.shiftKey ? Math.round(c.y / 5) * 5 : c.y;
-      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY, false, e.altKey);
+      // Live-stabilize section splines (skips strict anchor ordering) so tangents / half-space
+      // stay valid during handle drags — avoids end-of-drag snaps and broken hit testing.
+      applyDragDelta(brd, d.edits, gx - d.originX, gy - d.originY, true, e.altKey);
       bumpBoardRevision();
     },
     [
@@ -857,6 +859,18 @@ export function useBoardCanvasEditing(opts: {
     [finishDrag, finishPan],
   );
 
+  /** Clears pan/drag if the browser steals pointer capture (tab switch, modal, OS). */
+  const onCanvasLostPointerCapture = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const id = e.pointerId;
+      const panS = panSessionRef.current;
+      if (panS?.pointerId === id) finishPan(e.currentTarget, id);
+      const d = dragRef.current;
+      if (d?.pointerId === id) finishDrag(e.currentTarget, id, false);
+    },
+    [finishDrag, finishPan],
+  );
+
   return {
     onPlanPointerDown,
     onPlanPointerMove,
@@ -870,5 +884,6 @@ export function useBoardCanvasEditing(opts: {
     onSectionPointerMove,
     onSectionPointerUp,
     onSectionPointerCancel,
+    onCanvasLostPointerCapture,
   };
 }

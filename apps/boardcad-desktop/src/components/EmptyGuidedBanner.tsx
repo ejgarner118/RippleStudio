@@ -15,7 +15,7 @@ const STEPS = [
   },
   {
     title: "Step 3 — Cross-sections",
-    body: "Switch to section mode, place stations along the board, and tune rails. Use soft/hard templates or duplicate sections as needed.",
+    body: "Switch to section mode, place stations along the board, and tune rails. Use Soften rail / Harden rail on the active section (undoable), duplicate sections, or add from the current board as needed.",
   },
 ] as const;
 

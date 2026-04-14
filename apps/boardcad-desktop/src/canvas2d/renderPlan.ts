@@ -1,5 +1,8 @@
 import type { BezierBoard, BBox2D } from "@boardcad/core";
+import { gridMajorStepModelUnits } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
+import type { ReferenceImageLayer } from "../types/referenceImage";
+import { drawReferenceImageUnderlay } from "./drawReferenceImage";
 import { PLAN_PAD_PX } from "../constants";
 import {
   type ControlPointMarkerState,
@@ -23,6 +26,7 @@ export function renderPlanView(
   panPx = 0,
   panPy = 0,
   markerState?: ControlPointMarkerState,
+  planReference?: { layer: ReferenceImageLayer; img: HTMLImageElement | null },
 ): void {
   ctx.fillStyle = "#f4f4f8";
   ctx.fillRect(0, 0, cw, ch);
@@ -32,7 +36,11 @@ export function renderPlanView(
   const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
-    drawMetricGrid(ctx, tf, ch, planBounds, 50);
+    drawMetricGrid(ctx, tf, ch, planBounds, gridMajorStepModelUnits(brd.currentUnits));
+  }
+
+  if (planReference?.img && planReference.layer.enabled && planReference.layer.objectUrl) {
+    drawReferenceImageUnderlay(ctx, tf, ch, planBounds, planReference.img, planReference.layer);
   }
 
   if (overlays.ghost) {

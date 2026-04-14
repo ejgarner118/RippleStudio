@@ -1,6 +1,9 @@
 import type { BezierBoard } from "@boardcad/core";
 import type { BBox2D } from "@boardcad/core";
+import { gridMajorStepModelUnits } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
+import type { ReferenceImageLayer } from "../types/referenceImage";
+import { drawReferenceImageUnderlay } from "./drawReferenceImage";
 import { PROFILE_PAD_PX } from "../constants";
 import {
   type ControlPointMarkerState,
@@ -27,6 +30,7 @@ export function renderProfileView(
   panPy = 0,
   deckMarkers?: ControlPointMarkerState,
   bottomMarkers?: ControlPointMarkerState,
+  profileReference?: { layer: ReferenceImageLayer; img: HTMLImageElement | null },
 ): void {
   ctx.fillStyle = "#f8f6ff";
   ctx.fillRect(0, 0, cw, ch);
@@ -42,7 +46,19 @@ export function renderProfileView(
   const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
-    drawMetricGrid(ctx, tf, ch, profileStringerBounds, 25);
+    const step = gridMajorStepModelUnits(brd.currentUnits) * 0.5;
+    drawMetricGrid(ctx, tf, ch, profileStringerBounds, step > 0 ? step : 1);
+  }
+
+  if (profileReference?.img && profileReference.layer.enabled && profileReference.layer.objectUrl) {
+    drawReferenceImageUnderlay(
+      ctx,
+      tf,
+      ch,
+      profileStringerBounds,
+      profileReference.img,
+      profileReference.layer,
+    );
   }
 
   if (overlays.profileBottom && bottomXy.length >= 4) {
