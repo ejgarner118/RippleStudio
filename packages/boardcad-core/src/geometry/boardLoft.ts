@@ -14,13 +14,21 @@ import {
 export function buildLoftMesh3D(
   board: BezierBoard,
   _outlineXy: Float32Array,
+  quality: "draft" | "standard" | "high" = "draft",
 ): { positions: Float32Array; indices: Uint32Array } | null {
   void _outlineXy;
   if (board.crossSections.length < 2) return null;
 
+  const steps =
+    quality === "high"
+      ? { lengthStepMm: 1.5, widthStepMm: 1.2 }
+      : quality === "standard"
+        ? { lengthStepMm: 3, widthStepMm: 2.2 }
+        : { lengthStepMm: 6, widthStepMm: 4 };
+
   const raw = buildJavaSurfaceMesh(board, {
-    lengthStepMm: 2,
-    widthStepMm: 1.5,
+    lengthStepMm: steps.lengthStepMm,
+    widthStepMm: steps.widthStepMm,
   });
   if (!raw || raw.positions.length < 9) return null;
 

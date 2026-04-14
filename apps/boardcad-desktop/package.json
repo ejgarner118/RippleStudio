@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check:no-tauri": "node ./scripts/check-no-tauri-imports.mjs",
+    "check:bundle-size": "node ./scripts/check-bundle-size.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^29.0.2",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^3.0.0"

@@ -10,11 +10,12 @@
     "build": "npm run build -w @boardcad/core && npm run build -w boardcad-web",
     "test": "npm run test -w @boardcad/core && npm run test -w boardcad-web",
     "lint": "npm run build -w @boardcad/core && npm run typecheck -w boardcad-web && npm run check:no-tauri -w boardcad-web",
-    "verify": "npm run lint && npm run test && npm run build",
+    "verify": "npm run lint && npm run test && npm run build && npm run web:bundle-check",
     "web:dev": "npm run dev -w boardcad-web",
     "web:build": "npm run build -w boardcad-web",
     "web:test": "npm run test -w boardcad-web",
-    "web:typecheck": "npm run typecheck -w boardcad-web"
+    "web:typecheck": "npm run typecheck -w boardcad-web",
+    "web:bundle-check": "npm run check:bundle-size -w boardcad-web"
   },
   "engines": {
     "node": ">=20"

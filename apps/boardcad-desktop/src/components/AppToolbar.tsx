@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { BoardCadSettings } from "@boardcad/core";
 import { APP_DISPLAY_NAME } from "../constants/brand";
+import { primaryModifierLabel } from "../lib/keyboardGuards";
 
 export function closeMenus() {
   document
@@ -60,6 +61,7 @@ export function AppToolbar({
   onAbout,
 }: AppToolbarProps) {
   const menubarRef = useRef<HTMLElement | null>(null);
+  const mod = primaryModifierLabel();
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -140,22 +142,22 @@ export function AppToolbar({
                 type="button"
                 role="menuitem"
                 className="menu__item"
-                aria-keyshortcuts="Control+O"
+                aria-keyshortcuts="Control+O Meta+O"
                 title="Open a .brd file"
                 onClick={() => {
                   closeMenus();
                   onOpen();
                 }}
               >
-                Open… <span className="menu__kbd">Ctrl+O</span>
+                Open… <span className="menu__kbd">{mod}+O</span>
               </button>
             </li>
             <li className="menu__sep" role="separator" />
-            <li role="none" className="menu__label">
+            <li className="menu__label" role="none">
               Open recent
             </li>
             {recentFiles.length === 0 ? (
-              <li role="none" className="menu__hint">
+              <li className="menu__hint" role="none">
                 No recent files
               </li>
             ) : (
@@ -182,14 +184,14 @@ export function AppToolbar({
                 type="button"
                 role="menuitem"
                 className="menu__item"
-                aria-keyshortcuts="Control+S"
+                aria-keyshortcuts="Control+S Meta+S"
                 title="Save the current board"
                 onClick={() => {
                   closeMenus();
                   onSave();
                 }}
               >
-                Save <span className="menu__kbd">Ctrl+S</span>
+                Save <span className="menu__kbd">{mod}+S</span>
               </button>
             </li>
             <li role="none">
@@ -197,14 +199,14 @@ export function AppToolbar({
                 type="button"
                 role="menuitem"
                 className="menu__item"
-                aria-keyshortcuts="Control+Shift+S"
+                aria-keyshortcuts="Control+Shift+S Meta+Shift+S"
                 title="Save under a new file name"
                 onClick={() => {
                   closeMenus();
                   onSaveAs();
                 }}
               >
-                Save as… <span className="menu__kbd">Ctrl+Shift+S</span>
+                Save as… <span className="menu__kbd">{mod}+Shift+S</span>
               </button>
             </li>
             <li className="menu__sep" role="separator" />
@@ -235,13 +237,13 @@ export function AppToolbar({
                 role="menuitem"
                 className="menu__item"
                 disabled={!canUndo}
-                aria-keyshortcuts="Control+Z"
+                aria-keyshortcuts="Control+Z Meta+Z"
                 onClick={() => {
                   closeMenus();
                   onUndo();
                 }}
               >
-                Undo <span className="menu__kbd">Ctrl+Z</span>
+                Undo <span className="menu__kbd">{mod}+Z</span>
               </button>
             </li>
             <li role="none">
@@ -250,13 +252,13 @@ export function AppToolbar({
                 role="menuitem"
                 className="menu__item"
                 disabled={!canRedo}
-                aria-keyshortcuts="Control+Y"
+                aria-keyshortcuts="Control+Y Meta+Y"
                 onClick={() => {
                   closeMenus();
                   onRedo();
                 }}
               >
-                Redo <span className="menu__kbd">Ctrl+Y</span>
+                Redo <span className="menu__kbd">{mod}+Y</span>
               </button>
             </li>
           </ul>
@@ -305,7 +307,7 @@ export function AppToolbar({
               </button>
             </li>
             <li className="menu__sep" role="separator" />
-            <li role="none" className="menu__label">
+            <li className="menu__label" role="none">
               Theme
             </li>
             <li role="none">

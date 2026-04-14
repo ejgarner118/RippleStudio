@@ -19,6 +19,7 @@ export function useCanvasWheelZoom(
     const el = canvasRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       e.preventDefault();
       e.stopPropagation();
       const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;

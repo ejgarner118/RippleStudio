@@ -1,16 +1,19 @@
 import { useRef } from "react";
 import { APP_DISPLAY_NAME } from "../constants/brand";
 import { useModalA11y } from "../hooks/useModalA11y";
+import { primaryModifierLabel } from "../lib/keyboardGuards";
 
 type KeyboardShortcutsModalProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const ROWS: [string, string][] = [
-  ["Open…", "Ctrl+O"],
-  ["Save", "Ctrl+S"],
-  ["Save as…", "Ctrl+Shift+S"],
+function rowsForPlatform(): [string, string][] {
+  const mod = primaryModifierLabel();
+  return [
+    ["Open…", `${mod}+O`],
+    ["Save", `${mod}+S`],
+    ["Save as…", `${mod}+Shift+S`],
   ["Export…", "Alt+E"],
   ["Fit all 2D views (plan / profile / section)", "View menu → Fit 2D views"],
   ["Reset 3D to frame board", "View menu → Reset 3D view"],
@@ -18,22 +21,24 @@ const ROWS: [string, string][] = [
   ["3D preview: orbit / pan / zoom", "Left drag · Right drag pan · Wheel or middle zoom"],
   [
     "2D views (plan / profile / section)",
-    "Wheel zooms (does not scroll the page) · Middle-drag or Alt+drag pan",
+    "Wheel zooms (canvas focused) · Middle-drag / Alt+drag / touch-drag pan",
   ],
+  ["Canvas keyboard", "Arrow keys pan · +/- zoom"],
   ["Insert point after selection", "A"],
   ["Remove control point", "Delete / Backspace"],
   ["Toggle smooth corner", "C"],
   ["Duplicate section", "Shift+D"],
   ["Interpolate section", "Shift+I"],
   ["Snap drag to 5-unit grid", "Hold Shift"],
-  ["Undo", "Ctrl+Z"],
-  ["Redo", "Ctrl+Y"],
-  ["Close window", "Ctrl+W"],
-];
+    ["Undo", `${mod}+Z`],
+    ["Redo", `${mod}+Y`],
+  ];
+}
 
 export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModalProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const { dialogRef } = useModalA11y({ open, onClose, initialFocusRef: closeBtnRef });
+  const rows = rowsForPlatform();
 
   if (!open) return null;
 
@@ -76,7 +81,7 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
               </tr>
             </thead>
             <tbody>
-              {ROWS.map(([action, keys]) => (
+              {rows.map(([action, keys]) => (
                 <tr key={action}>
                   <td>{action}</td>
                   <td>

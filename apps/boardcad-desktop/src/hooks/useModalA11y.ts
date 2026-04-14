@@ -37,10 +37,12 @@ export function useModalA11y({ open, onClose, initialFocusRef }: UseModalA11yOpt
       if (!dialogRef.current) return;
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
         return;
       }
       if (e.key !== "Tab") return;
+      e.stopPropagation();
       const items = focusables(dialogRef.current);
       if (items.length === 0) {
         e.preventDefault();

@@ -150,7 +150,8 @@ type PanSession = {
 };
 
 function isPanPointer(e: React.PointerEvent<HTMLCanvasElement>): boolean {
-  return e.button === 1 || (e.button === 0 && e.altKey);
+  // Web-friendly pan affordances: middle drag, alt+drag, or touch drag.
+  return e.button === 1 || (e.button === 0 && e.altKey) || e.pointerType === "touch";
 }
 
 export function useBoardCanvasEditing(opts: {

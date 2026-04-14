@@ -69,6 +69,7 @@ import { useBoardGeometry } from "./hooks/useBoardGeometry";
 import { useDesktopSettings } from "./hooks/useDesktopSettings";
 import { useWindowCloseGuard } from "./hooks/useWindowCloseGuard";
 import { confirmDiscardUnsaved } from "./lib/confirmDiscard";
+import { isTypingContext } from "./lib/keyboardGuards";
 import {
   formatFsError,
   hasRecentBoard,
@@ -79,7 +80,6 @@ import {
   writeBytesFromDialogPath,
   writeTextFromDialogPath,
 } from "./lib/fileIo";
-import { requestTauriWindowClose } from "./lib/requestTauriWindowClose";
 import { defaultOverlays, type OverlayState } from "./types/overlays";
 import type { BoardEditMode } from "./types/editMode";
 import { APP_WINDOW_TITLE_SUFFIX } from "./constants/brand";
@@ -98,6 +98,8 @@ const TEMPLATE_FILE_BY_PRESET: Record<TemplateFilePreset, string> = {
   fish: "Fish.brd",
   longboard: "LongBoard.brd",
 };
+
+const KEYBOARD_PAN_STEP_PX = 24;
 
 export default function App() {
   const { settings, setSettings, resolvedTheme } = useDesktopSettings();
@@ -420,6 +422,31 @@ export default function App() {
     },
     [showToast, stack, pushRecent, bumpCmdNonce],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (isDirty || path !== null || emptyGuidedStep !== null) return;
+      try {
+        const source = "/BoardTemplates/Standard.brd";
+        const bytes = await readBytesFromPath(source);
+        const loaded = new BezierBoard();
+        const r = loadBrdFromBytes(loaded, bytes, source);
+        if (cancelled || r !== 0) return;
+        stack.clear();
+        bumpCmdNonce();
+        setBrd(loaded);
+        setSectionIndex(firstDrawableCrossSectionIndex(loaded));
+        setIsDirty(false);
+        setPath(null);
+      } catch {
+        // Keep starter board fallback if template can't be loaded.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDirty, path, emptyGuidedStep, stack, bumpCmdNonce]);
 
   const openBoard = useCallback(async () => {
     if (isDirty && !(await confirmDiscardUnsaved())) return;
@@ -1048,17 +1075,18 @@ export default function App() {
     [brd, bumpBoardRevision],
   );
 
+  const modalOpen = aboutOpen || newBoardOpen || shortcutsOpen || brdHelpOpen || exportOpen;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target;
-      if (
-        el instanceof HTMLInputElement ||
-        el instanceof HTMLTextAreaElement ||
-        el instanceof HTMLSelectElement
-      ) {
-        return;
-      }
+      if (e.defaultPrevented || e.isComposing) return;
+      if (isTypingContext(e.target)) return;
+      if (modalOpen) return;
       const k = e.key.toLowerCase();
+      if (!e.ctrlKey && !e.metaKey && e.repeat) {
+        if (k === "a" || k === "c" || k === "d" || k === "i") return;
+        if (e.key === "Delete" || e.key === "Backspace") return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && k === "e") {
         e.preventDefault();
         setExportOpen(true);
@@ -1111,10 +1139,6 @@ export default function App() {
         e.preventDefault();
         if (stack.canRedo()) doRedo();
       }
-      if (k === "w") {
-        e.preventDefault();
-        void requestTauriWindowClose(isDirty);
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1131,7 +1155,49 @@ export default function App() {
     toggleContinuity,
     duplicateSection,
     interpolateSection,
+    modalOpen,
   ]);
+
+  const handleCanvasKeyPanZoom = useCallback(
+    (
+      e: React.KeyboardEvent<HTMLCanvasElement>,
+      setZoom: React.Dispatch<React.SetStateAction<number>>,
+      setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>,
+    ) => {
+      if (e.nativeEvent.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+      const key = e.key;
+      if (key === "+" || key === "=") {
+        e.preventDefault();
+        setZoom((z) => clampZoom(z * 1.12));
+        return;
+      }
+      if (key === "-" || key === "_") {
+        e.preventDefault();
+        setZoom((z) => clampZoom(z / 1.12));
+        return;
+      }
+      if (key === "ArrowUp") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y + KEYBOARD_PAN_STEP_PX }));
+        return;
+      }
+      if (key === "ArrowDown") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y - KEYBOARD_PAN_STEP_PX }));
+        return;
+      }
+      if (key === "ArrowLeft") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, x: p.x + KEYBOARD_PAN_STEP_PX }));
+        return;
+      }
+      if (key === "ArrowRight") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, x: p.x - KEYBOARD_PAN_STEP_PX }));
+      }
+    },
+    [clampZoom],
+  );
 
   const canUndo = stack.canUndo();
   const canRedo = stack.canRedo();
@@ -1153,6 +1219,7 @@ export default function App() {
     hoveredTarget == null
       ? "None"
       : `#${hoveredTarget.index + 1}${hoveredTarget.point ? ` (${hoveredTarget.point})` : ""}`;
+  const geometryIssues = computeGeometryIssues();
 
   return (
     <div className="app-shell">
@@ -1221,7 +1288,7 @@ export default function App() {
         canRemoveControlPoint={currentSplinePointCount() > 2}
         onToggleContinuity={toggleContinuity}
         onResetCurrentSpline={resetCurrentSpline}
-        validationIssues={computeGeometryIssues()}
+        validationIssues={geometryIssues}
         onFixSectionOrder={fixSectionOrder}
         onApplyProfileShaping={applyProfileShaping}
         onAddPairedProfilePoint={addPairedProfilePoint}
@@ -1268,6 +1335,18 @@ export default function App() {
             onDismiss={() => setEmptyGuidedStep(null)}
           />
         ) : null}
+        <p id="plan-canvas-hint" className="visually-hidden">
+          Plan canvas: drag points to edit. Pan with middle drag, alt drag, or touch drag.
+          Use arrow keys to pan and plus/minus to zoom when focused.
+        </p>
+        <p id="profile-canvas-hint" className="visually-hidden">
+          Profile canvas: drag points to edit. Pan with middle drag, alt drag, or touch drag.
+          Use arrow keys to pan and plus/minus to zoom when focused.
+        </p>
+        <p id="section-canvas-hint" className="visually-hidden">
+          Section canvas: drag points to edit. Pan with middle drag, alt drag, or touch drag.
+          Use arrow keys to pan and plus/minus to zoom when focused.
+        </p>
         <div className="workspace__main">
           <WorkspacePanels
             onResetPlanView={() => {
@@ -1293,10 +1372,13 @@ export default function App() {
                 width={640}
                 height={260}
                 aria-label="Plan view: board outline"
+                aria-describedby="plan-canvas-hint"
+                tabIndex={0}
                 onPointerDown={canvasPtr.onPlanPointerDown}
                 onPointerMove={canvasPtr.onPlanPointerMove}
                 onPointerUp={canvasPtr.onPlanPointerUp}
                 onPointerCancel={canvasPtr.onPlanPointerCancel}
+                onKeyDown={(e) => handleCanvasKeyPanZoom(e, setPlanZoom, setPlanPan)}
               />
             }
             profileCanvas={
@@ -1306,10 +1388,13 @@ export default function App() {
                 width={640}
                 height={140}
                 aria-label="Profile view: deck and bottom"
+                aria-describedby="profile-canvas-hint"
+                tabIndex={0}
                 onPointerDown={canvasPtr.onProfilePointerDown}
                 onPointerMove={canvasPtr.onProfilePointerMove}
                 onPointerUp={canvasPtr.onProfilePointerUp}
                 onPointerCancel={canvasPtr.onProfilePointerCancel}
+                onKeyDown={(e) => handleCanvasKeyPanZoom(e, setProfileZoom, setProfilePan)}
               />
             }
             sectionCanvas={
@@ -1319,10 +1404,13 @@ export default function App() {
                 width={640}
                 height={140}
                 aria-label="Cross-section view"
+                aria-describedby="section-canvas-hint"
+                tabIndex={0}
                 onPointerDown={canvasPtr.onSectionPointerDown}
                 onPointerMove={canvasPtr.onSectionPointerMove}
                 onPointerUp={canvasPtr.onSectionPointerUp}
                 onPointerCancel={canvasPtr.onSectionPointerCancel}
+                onKeyDown={(e) => handleCanvasKeyPanZoom(e, setSectionZoom, setSectionPan)}
               />
             }
             threeCanvas={
