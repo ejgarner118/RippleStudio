@@ -79,4 +79,25 @@ describe("boardSurfaceJava", () => {
       expect(nx * nx + ny * ny + nz * nz).toBeGreaterThan(1e-12);
     }
   });
+
+  it("custom overhang bounds keep tail cap points on one station plane", () => {
+    const brd = new BezierBoard();
+    loadBrdFromText(brd, BOARD_WITH_SECTIONS_BRD, "tail-cap-plane.brd");
+    const mesh = buildJavaSurfaceMesh(brd, {
+      lengthStepMm: 5,
+      widthStepMm: 2,
+      xMinMm: -60,
+      xMaxMm: getBoardLengthJava(brd),
+    });
+    expect(mesh).not.toBeNull();
+
+    const nearTailXs: number[] = [];
+    for (let i = 0; i < mesh!.positions.length; i += 3) {
+      const x = mesh!.positions[i]!;
+      if (Math.abs(x + 60) < 0.05) nearTailXs.push(x);
+    }
+    expect(nearTailXs.length).toBeGreaterThan(10);
+    const spread = Math.max(...nearTailXs) - Math.min(...nearTailXs);
+    expect(spread).toBeLessThan(0.02);
+  });
 });

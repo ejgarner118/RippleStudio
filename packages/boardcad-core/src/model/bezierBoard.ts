@@ -203,6 +203,8 @@ export class BezierBoard {
       this.outline.getControlPointOrThrow(i).setTangentToPrevLocks(LOCK_X_LESS);
       this.outline.getControlPointOrThrow(i).setTangentToNextLocks(LOCK_X_MORE);
     }
+    // Tail endpoint needs free X-overhang (fish/swallow tails), but keep Y guard.
+    this.outline.getControlPointOrThrow(0).setTangentToNextLocks(0);
     this.outline.getControlPointOrThrow(0).addTangentToNextLocks(LOCK_Y_MORE);
     this.outline
       .getControlPointOrThrow(this.outline.getNrOfControlPoints() - 1)

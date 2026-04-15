@@ -3,6 +3,14 @@ import {
   buildJavaSurfaceMesh,
   javaPointsToThreeYUp,
 } from "./boardSurfaceJava.js";
+import { getBoardLengthJava } from "./boardInterpolation.js";
+
+const MAX_TAIL_OVERHANG_MM = 320;
+const MAX_NOSE_OVERHANG_MM = 90;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(v, hi));
+}
 
 function getOutlineXBounds(outlineXy: Float32Array): { minX: number; maxX: number } | null {
   if (outlineXy.length < 2) return null;
@@ -17,12 +25,25 @@ function getOutlineXBounds(outlineXy: Float32Array): { minX: number; maxX: numbe
   return { minX, maxX };
 }
 
+function getSafeMeshXBounds(
+  board: BezierBoard,
+  outlineXy: Float32Array,
+): { minX: number; maxX: number } | null {
+  const b = getOutlineXBounds(outlineXy);
+  if (!b) return null;
+  const len = getBoardLengthJava(board);
+  const minX = clamp(b.minX, -MAX_TAIL_OVERHANG_MM, len + MAX_NOSE_OVERHANG_MM);
+  const maxX = clamp(b.maxX, -MAX_TAIL_OVERHANG_MM, len + MAX_NOSE_OVERHANG_MM);
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || maxX - minX < 1e-3) return null;
+  return { minX: Math.min(minX, maxX), maxX: Math.max(minX, maxX) };
+}
+
 /**
  * Java-parity hull mesh (`BezierBoard.update3DModel` deck + bottom + mirror),
  * converted to Y-up Three.js coordinates (X length, Y vertical, Z lateral).
  *
- * `outlineXy` is accepted for API compatibility with the desktop app but is unused;
- * outline width is taken from the board outline spline via `getInterpolatedCrossSection`.
+ * `outlineXy` bounds are used to allow controlled nose/tail overhang beyond
+ * centerline endpoint anchors when generating mesh stations.
  */
 export function buildLoftMesh3D(
   board: BezierBoard,
@@ -38,7 +59,7 @@ export function buildLoftMesh3D(
         ? { lengthStepMm: 3, widthStepMm: 2.2 }
         : { lengthStepMm: 6, widthStepMm: 4 };
 
-  const bounds = getOutlineXBounds(outlineXy);
+  const bounds = getSafeMeshXBounds(board, outlineXy);
   const raw = buildJavaSurfaceMesh(board, {
     lengthStepMm: steps.lengthStepMm,
     widthStepMm: steps.widthStepMm,

@@ -6,6 +6,8 @@ import { splineGetValueAt } from "./bezierSplineGeom.js";
 
 /** Minimum target width/thickness (mm) when scaling interpolated sections; avoids div-by-zero without inflating tips like Java’s 0.5 mm floor. */
 const MIN_INTERP_TARGET_MM = 0.01;
+const TAIL_EXTRAP_REF_MM = 40;
+const TAIL_EXTRAP_MAX_SCALE = 2.4;
 
 export function getBoardLengthJava(board: BezierBoard): number {
   let maxX = 0;
@@ -166,9 +168,21 @@ export function getInterpolatedCrossSectionJava(
     merged = cloneSpline(sp1);
   }
 
-  let thickness = getThicknessAtPosJava(board, x);
+  let thickness = getThicknessAtPosJava(board, xForSections);
+  let width = getWidthAtPosJava(board, xForSections);
+  if (x < 0) {
+    const refX = Math.min(TAIL_EXTRAP_REF_MM, Math.max(len * 0.1, 5));
+    const refWidth = getWidthAtPosJava(board, refX);
+    const refThickness = getThicknessAtPosJava(board, refX);
+    const tailDx = -x;
+    const widthSlope = Math.max(0, (refWidth - width) / Math.max(refX, 1e-6));
+    const thicknessSlope = Math.max(0, (refThickness - thickness) / Math.max(refX, 1e-6));
+    const maxWidth = Math.max(refWidth * TAIL_EXTRAP_MAX_SCALE, MIN_INTERP_TARGET_MM);
+    const maxThickness = Math.max(refThickness * TAIL_EXTRAP_MAX_SCALE, MIN_INTERP_TARGET_MM);
+    width = Math.min(maxWidth, width + widthSlope * tailDx);
+    thickness = Math.min(maxThickness, thickness + thicknessSlope * tailDx);
+  }
   if (thickness < MIN_INTERP_TARGET_MM) thickness = MIN_INTERP_TARGET_MM;
-  let width = getWidthAtPosJava(board, x);
   if (width < MIN_INTERP_TARGET_MM) width = MIN_INTERP_TARGET_MM;
 
   const oldW = splineWidthFromControlPoints(merged);

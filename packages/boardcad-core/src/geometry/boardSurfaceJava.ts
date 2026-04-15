@@ -16,6 +16,16 @@ const DEG_TO_RAD = Math.PI / 180;
 
 export type Point3Java = { x: number; y: number; z: number };
 
+type StationEval = { xOut: number; xEval: number };
+
+function resolveStationX(xIn: number, len: number, clampAlongLength: boolean): StationEval {
+  if (clampAlongLength) {
+    const xEval = Math.max(SURFACE_X_CLAMP_LOW, Math.min(xIn, len - SURFACE_X_CLAMP_LOW));
+    return { xOut: xEval, xEval };
+  }
+  return { xOut: xIn, xEval: Math.max(0, Math.min(xIn, len)) };
+}
+
 /**
  * Java `BezierBoardControlPointInterpolationSurfaceModel.getPointAt`
  * (`minAngle`/`maxAngle` in **degrees**, `s` in [0,1] within the window).
@@ -30,14 +40,10 @@ export function getPointAtJava(
   useMinimumAngleOnSharpCorners = true,
   clampAlongLength = true,
 ): Point3Java | null {
-  let x = xIn;
   const len = getBoardLengthJava(board);
-  if (clampAlongLength) {
-    if (x < SURFACE_X_CLAMP_LOW) x = SURFACE_X_CLAMP_LOW;
-    if (x > len - SURFACE_X_CLAMP_LOW) x = len - SURFACE_X_CLAMP_LOW;
-  }
+  const { xOut, xEval } = resolveStationX(xIn, len, clampAlongLength);
 
-  const cs = getInterpolatedCrossSectionJava(board, x);
+  const cs = getInterpolatedCrossSectionJava(board, xEval);
   if (!cs) return null;
 
   const spline = cs.getBezierSpline();
@@ -65,8 +71,8 @@ export function getPointAtJava(
 
   const currentS = (maxS - minS) * s + minS;
   const p2 = splineGetPointByS(spline, currentS);
-  const rocker = getRockerAtPosJava(board, x);
-  return { x, y: p2.x, z: p2.y + rocker };
+  const rocker = getRockerAtPosJava(board, xEval);
+  return { x: xOut, y: p2.x, z: p2.y + rocker };
 }
 
 /** Java `getSurfacePoint(x, sFull)` with full -360..360 degree window. */
@@ -145,19 +151,6 @@ function emitQuad(
   }
 }
 
-function centroid3(ring: Point3Java[]): Point3Java {
-  let x = 0;
-  let y = 0;
-  let z = 0;
-  for (const p of ring) {
-    x += p.x;
-    y += p.y;
-    z += p.z;
-  }
-  const n = ring.length;
-  return { x: x / n, y: y / n, z: z / n };
-}
-
 function distSq3(a: Point3Java, b: Point3Java): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
@@ -191,20 +184,29 @@ function halfHullRingAtStripBoundary(
   bottomMax: number,
 ): Point3Java[] {
   const ring: Point3Java[] = [];
+  const capX = x;
   for (let i = 0; i < deckSteps; i++) {
     const p =
       i === 0
         ? getPointAtJava(board, x, 0, -360, 360, true, false)
-        : getSurfacePointAngled(board, x, deckMin, deckMax, i, deckSteps);
-    if (p) ring.push(p);
+        : getSurfacePointAngled(board, x, deckMin, deckMax, i, deckSteps, false);
+    if (p) ring.push({ ...p, x: capX });
   }
-  const deckRail = getSurfacePointAngled(board, x, deckMin, deckMax, deckSteps, deckSteps);
-  if (deckRail) ring.push(deckRail);
+  const deckRail = getSurfacePointAngled(board, x, deckMin, deckMax, deckSteps, deckSteps, false);
+  if (deckRail) ring.push({ ...deckRail, x: capX });
   for (let k = 1; k <= bottomSteps; k++) {
-    const p = getSurfacePointAngled(board, x, bottomMin, bottomMax, k, bottomSteps);
-    if (p) ring.push(p);
+    const p = getSurfacePointAngled(board, x, bottomMin, bottomMax, k, bottomSteps, false);
+    if (p) ring.push({ ...p, x: capX });
   }
   return dedupeRingPoints(ring);
+}
+
+function normalX(a: Point3Java, b: Point3Java, c: Point3Java): number {
+  const aby = b.y - a.y;
+  const abz = b.z - a.z;
+  const acy = c.y - a.y;
+  const acz = c.z - a.z;
+  return aby * acz - abz * acy;
 }
 
 /** Fan + mirrored fan so caps match the mirrored half-hull topology. */
@@ -215,40 +217,38 @@ function appendEndCapFromRing(
   outwardPlusX: boolean,
 ): void {
   if (ring.length < 3) return;
-
-  const c = centroid3(ring);
-  const cIdx = pushP(pos, c);
   const ringIdx: number[] = [];
-  for (const p of ring) {
-    ringIdx.push(pushP(pos, p));
-  }
-  const n = ringIdx.length;
-  for (let i = 0; i < n; i++) {
-    const a = ringIdx[i]!;
-    const b = ringIdx[(i + 1) % n]!;
-    const pa = ring[i]!;
-    const pb = ring[(i + 1) % n]!;
-    if (triangleArea2(c, pa, pb) > 1e-12) {
-      if (outwardPlusX) idx.push(cIdx, b, a);
-      else idx.push(cIdx, a, b);
-    }
+  for (const p of ring) ringIdx.push(pushP(pos, p));
+  const n = ring.length;
+  for (let i = 1; i < n - 1; i++) {
+    const pa = ring[0]!;
+    const pb = ring[i]!;
+    const pc = ring[i + 1]!;
+    if (triangleArea2(pa, pb, pc) <= 1e-12) continue;
+    const a = ringIdx[0]!;
+    const b = ringIdx[i]!;
+    const c = ringIdx[i + 1]!;
+    const nx = normalX(pa, pb, pc);
+    const shouldFlip = outwardPlusX ? nx < 0 : nx > 0;
+    if (shouldFlip) idx.push(a, c, b);
+    else idx.push(a, b, c);
   }
 
-  const cM = pushP(pos, { x: c.x, y: -c.y, z: c.z });
-  const mRing: number[] = [];
-  for (const p of ring) {
-    mRing.push(pushP(pos, { x: p.x, y: -p.y, z: p.z }));
-  }
-  for (let i = 0; i < n; i++) {
-    const a = mRing[i]!;
-    const b = mRing[(i + 1) % n]!;
-    const pa = { x: ring[i]!.x, y: -ring[i]!.y, z: ring[i]!.z };
-    const pb = { x: ring[(i + 1) % n]!.x, y: -ring[(i + 1) % n]!.y, z: ring[(i + 1) % n]!.z };
-    const cm = { x: c.x, y: -c.y, z: c.z };
-    if (triangleArea2(cm, pa, pb) > 1e-12) {
-      if (outwardPlusX) idx.push(cM, a, b);
-      else idx.push(cM, b, a);
-    }
+  const mirrored = ring.map((p) => ({ x: p.x, y: -p.y, z: p.z }));
+  const mRingIdx: number[] = [];
+  for (const p of mirrored) mRingIdx.push(pushP(pos, p));
+  for (let i = 1; i < n - 1; i++) {
+    const pa = mirrored[0]!;
+    const pb = mirrored[i]!;
+    const pc = mirrored[i + 1]!;
+    if (triangleArea2(pa, pb, pc) <= 1e-12) continue;
+    const a = mRingIdx[0]!;
+    const b = mRingIdx[i]!;
+    const c = mRingIdx[i + 1]!;
+    const nx = normalX(pa, pb, pc);
+    const shouldFlip = outwardPlusX ? nx < 0 : nx > 0;
+    if (shouldFlip) idx.push(a, c, b);
+    else idx.push(a, b, c);
   }
 }
 

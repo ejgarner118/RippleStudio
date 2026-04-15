@@ -172,6 +172,23 @@ describe("boardCommands", () => {
     expect(sp.getControlPointOrThrow(1).getEndPoint().x).toBe(movedX);
   });
 
+  it("outline tail tangent can overhang behind anchor while nose remains clamped", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "tail-locks.brd")).toBe(0);
+    const tail = board.outline.getControlPointOrThrow(0);
+    const tailX = tail.getEndPoint().x;
+    tail.getTangentToNext().x = tailX - 40;
+    stabilizeEditTargetSpline(board, { kind: "outline", index: 0 });
+    expect(board.outline.getControlPointOrThrow(0).getTangentToNext().x).toBeLessThan(tailX - 30);
+
+    const noseIdx = board.outline.getNrOfControlPoints() - 1;
+    const nose = board.outline.getControlPointOrThrow(noseIdx);
+    const noseX = nose.getEndPoint().x;
+    nose.getTangentToPrev().x = noseX + 40;
+    stabilizeEditTargetSpline(board, { kind: "outline", index: noseIdx });
+    expect(board.outline.getControlPointOrThrow(noseIdx).getTangentToPrev().x).toBeLessThanOrEqual(noseX);
+  });
+
   it("RefineCrossSectionRailCommand undo restores section spline", () => {
     const board = new BezierBoard();
     expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "rail-ref.brd")).toBe(0);

@@ -179,7 +179,7 @@ function enforceAnchorOrdering(sp: BezierSpline): void {
   }
 }
 
-function enforceTangentDirection(sp: BezierSpline): void {
+function enforceTangentDirection(targetKind: SplineTarget["kind"], sp: BezierSpline): void {
   const n = sp.getNrOfControlPoints();
   for (let i = 0; i < n; i++) {
     const k = sp.getControlPointOrThrow(i);
@@ -187,7 +187,8 @@ function enforceTangentDirection(sp: BezierSpline): void {
     const prev = k.getTangentToPrev();
     const next = k.getTangentToNext();
     if (prev.x > ex) prev.x = ex;
-    if (next.x < ex) next.x = ex;
+    const allowTailOverhang = targetKind === "outline" && i === 0;
+    if (!allowTailOverhang && next.x < ex) next.x = ex;
   }
 }
 
@@ -214,7 +215,7 @@ function stabilizeSpline(targetKind: SplineTarget["kind"], sp: BezierSpline): vo
   // Forcing prev<=anchor<=next on section tangents can collapse one handle and
   // make handle mode switching appear broken.
   if (targetKind !== "section") {
-    enforceTangentDirection(sp);
+    enforceTangentDirection(targetKind, sp);
   }
   if (targetKind === "outline") {
     enforceHalfSpace(sp, -MAX_ABS_COORD, 0);

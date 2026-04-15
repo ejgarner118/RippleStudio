@@ -57,4 +57,31 @@ describe("boardLoft", () => {
     }
     expect(minX).toBeLessThan(-40);
   });
+
+  it("tail overhang mesh remains finite and triangulated at cap station", () => {
+    const brd = new BezierBoard();
+    expect(loadBrdFromText(brd, BOARD_WITH_SECTIONS_BRD, "s.brd")).toBe(0);
+    const tail = brd.outline.getControlPointOrThrow(0);
+    tail.points[1]!.x = -100;
+    tail.points[2]!.x = -150;
+    tail.points[2]!.y = Math.max(tail.points[2]!.y, 80);
+    const outline = sampleBezierSpline2D(brd.outline, 140);
+    const mesh = buildLoftMesh3D(brd, outline);
+    expect(mesh).not.toBeNull();
+
+    let minX = Infinity;
+    for (let i = 0; i < mesh!.positions.length; i += 3) {
+      minX = Math.min(minX, mesh!.positions[i]!);
+    }
+    let nearTailVerts = 0;
+    for (let i = 0; i < mesh!.positions.length; i += 3) {
+      if (Math.abs(mesh!.positions[i]! - minX) < 0.1) {
+        nearTailVerts++;
+        expect(Number.isFinite(mesh!.positions[i + 1]!)).toBe(true);
+        expect(Number.isFinite(mesh!.positions[i + 2]!)).toBe(true);
+      }
+    }
+    expect(nearTailVerts).toBeGreaterThan(10);
+    expect(mesh!.indices.length).toBeGreaterThan(0);
+  });
 });
