@@ -75,8 +75,8 @@ function fitPerspectiveCameraToBox(
   const dir = new THREE.Vector3(1.15, 0.82, 1.25).normalize();
   camera.position.copy(sphere.center).add(dir.multiplyScalar(dist));
   controls.target.copy(sphere.center);
-  camera.near = Math.max(dist / 200, 0.02);
-  camera.far = Math.max(dist * 80, 500);
+  camera.near = Math.max(dist / 80, 0.05);
+  camera.far = Math.min(Math.max(dist * 20, 80), 2000);
   camera.updateProjectionMatrix();
   controls.update();
 }
@@ -112,6 +112,15 @@ function OutlinePolyline({
     const m = new THREE.LineBasicMaterial({ color, linewidth: lineWidth });
     return new THREE.Line(g, m);
   }, [positions, color, lineWidth]);
+  useEffect(() => {
+    return () => {
+      const g = lineObject.geometry;
+      const m = lineObject.material;
+      g.dispose();
+      if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+      else m.dispose();
+    };
+  }, [lineObject]);
   return <primitive object={lineObject} />;
 }
 
@@ -119,28 +128,46 @@ function LoftMesh({
   positions,
   indices,
   color,
+  flatShading,
+  frontSideOnly,
+  normalView,
 }: {
   positions: Float32Array;
   indices: Uint32Array;
   color: string;
+  flatShading: boolean;
+  frontSideOnly: boolean;
+  normalView: boolean;
 }) {
   const mesh = useMemo(() => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     g.setIndex(new THREE.BufferAttribute(indices, 1));
     g.computeVertexNormals();
-    const m = new THREE.MeshStandardMaterial({
-      color,
-      side: THREE.DoubleSide,
-      flatShading: false,
-      metalness: 0.05,
-      roughness: 0.55,
-      emissive: new THREE.Color(color).multiplyScalar(0.12),
-    });
+    const side = frontSideOnly ? THREE.FrontSide : THREE.DoubleSide;
+    const m = normalView
+      ? new THREE.MeshNormalMaterial({ side, flatShading })
+      : new THREE.MeshStandardMaterial({
+          color,
+          side,
+          flatShading,
+          metalness: 0.05,
+          roughness: 0.55,
+          emissive: new THREE.Color(color).multiplyScalar(0.12),
+        });
     const meshObj = new THREE.Mesh(g, m);
     meshObj.scale.set(SCALE_3D, SCALE_3D, SCALE_3D);
     return meshObj;
-  }, [positions, indices, color]);
+  }, [positions, indices, color, flatShading, frontSideOnly, normalView]);
+  useEffect(() => {
+    return () => {
+      const g = mesh.geometry;
+      const m = mesh.material;
+      g.dispose();
+      if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+      else m.dispose();
+    };
+  }, [mesh]);
   return <primitive object={mesh} />;
 }
 
@@ -233,6 +260,11 @@ type SceneInnerProps = {
   gridMajor: number;
   gridMinor: number;
   boardColor: string;
+  renderDebug: {
+    flatShading: boolean;
+    frontSideOnly: boolean;
+    normalView: boolean;
+  };
 };
 
 function SceneInner({
@@ -248,9 +280,21 @@ function SceneInner({
   gridMajor,
   gridMinor,
   boardColor,
+  renderDebug,
 }: SceneInnerProps) {
   const grid = useMemo(
-    () => new THREE.GridHelper(28, 28, gridMajor, gridMinor),
+    () => {
+      const gh = new THREE.GridHelper(28, 28, gridMajor, gridMinor);
+      gh.position.y = -0.002;
+      gh.renderOrder = -1;
+      const mats = Array.isArray(gh.material) ? gh.material : [gh.material];
+      mats.forEach((m) => {
+        m.depthWrite = false;
+        m.transparent = true;
+        m.opacity = 0.9;
+      });
+      return gh;
+    },
     [gridMajor, gridMinor],
   );
 
@@ -303,6 +347,9 @@ function SceneInner({
               positions={loft.positions}
               indices={loft.indices}
               color={boardColor}
+              flatShading={renderDebug.flatShading}
+              frontSideOnly={renderDebug.frontSideOnly}
+              normalView={renderDebug.normalView}
             />
           ) : null}
         </Suspense>
@@ -321,6 +368,13 @@ type BoardScene3DProps = {
   orbitRef: RefObject<OrbitControlsApi | null>;
   viewResetNonce: number;
   boardColor: "sage" | "ocean" | "sand" | "charcoal";
+  meshPreviewMode: "interactivePreview" | "exportParity";
+  renderDebug: {
+    flatShading: boolean;
+    frontSideOnly: boolean;
+    normalView: boolean;
+    highPrecisionDepth: boolean;
+  };
 };
 
 export function BoardScene3D({
@@ -333,7 +387,10 @@ export function BoardScene3D({
   orbitRef,
   viewResetNonce,
   boardColor,
+  meshPreviewMode,
+  renderDebug,
 }: BoardScene3DProps) {
+  void meshPreviewMode;
   const background = isDark ? "#1a1f28" : "#e8ecf4";
   const outlineColor = isDark ? 0x6ab0ff : 0x1a5fb4;
   const gridMajor = isDark ? 0x4a5568 : 0xb0b8c8;
@@ -344,7 +401,7 @@ export function BoardScene3D({
     <Canvas
       dpr={[1, 2]}
       style={{ touchAction: "none" }}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, logarithmicDepthBuffer: renderDebug.highPrecisionDepth }}
       camera={{ position: DEFAULT_CAM, fov: 50, near: 0.1, far: 2000 }}
     >
       <SceneInner
@@ -360,6 +417,7 @@ export function BoardScene3D({
         gridMajor={gridMajor}
         gridMinor={gridMinor}
         boardColor={meshColor}
+        renderDebug={renderDebug}
       />
     </Canvas>
   );

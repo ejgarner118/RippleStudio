@@ -130,6 +130,13 @@ type FinLayout = {
 };
 
 type BoardMaterialColor = "sage" | "ocean" | "sand" | "charcoal";
+type MeshPreviewMode = "interactivePreview" | "exportParity";
+type RenderDebugSettings = {
+  flatShading: boolean;
+  frontSideOnly: boolean;
+  normalView: boolean;
+  highPrecisionDepth: boolean;
+};
 
 const BoardScene3D = lazy(async () => {
   const m = await import("./board3d/BoardScene3D");
@@ -205,6 +212,13 @@ export default function App() {
   const [comparisonBaseline, setComparisonBaseline] = useState<BezierBoard | null>(null);
   const [finLayout, setFinLayout] = useState<FinLayout>({ template: "custom", boxes: [] });
   const [boardMaterialColor, setBoardMaterialColor] = useState<BoardMaterialColor>("sage");
+  const [meshPreviewMode, setMeshPreviewMode] = useState<MeshPreviewMode>("exportParity");
+  const [renderDebug, setRenderDebug] = useState<RenderDebugSettings>({
+    flatShading: false,
+    frontSideOnly: false,
+    normalView: false,
+    highPrecisionDepth: false,
+  });
   const [camPreviewSummary, setCamPreviewSummary] = useState<ReturnType<typeof previewToolpath> | null>(null);
   const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
   const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
@@ -310,7 +324,7 @@ export default function App() {
     profileXy,
     profileBounds,
     loftData,
-  } = useBoardGeometry(brd, sectionIndex, overlays, boardRevision);
+  } = useBoardGeometry(brd, sectionIndex, overlays, boardRevision, meshPreviewMode);
   const analytics = sampleBoardMetrics(brd);
   const comparisonDelta = comparisonBaseline ? compareBoardMetrics(brd, comparisonBaseline) : null;
   const qaIssues = runBoardQaChecks(brd, {
@@ -1850,6 +1864,12 @@ export default function App() {
         onGenerateCamPreview={generateCamPreview}
         boardMaterialColor={boardMaterialColor}
         onBoardMaterialColorChange={setBoardMaterialColor}
+        meshPreviewMode={meshPreviewMode}
+        onMeshPreviewModeChange={setMeshPreviewMode}
+        renderDebug={renderDebug}
+        onRenderDebugChange={(patch) =>
+          setRenderDebug((prev) => ({ ...prev, ...patch }))
+        }
       />
 
       <main className="workspace">
@@ -1974,6 +1994,8 @@ export default function App() {
                     orbitRef={orbitRef}
                     viewResetNonce={viewReset3dNonce}
                     boardColor={boardMaterialColor}
+                    meshPreviewMode={meshPreviewMode}
+                    renderDebug={renderDebug}
                   />
                 </Suspense>
               </div>

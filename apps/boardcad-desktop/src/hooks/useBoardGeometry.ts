@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   type BezierBoard,
   type BBox2D,
+  buildBoardMeshThree,
   bounds2D,
   buildLoftMesh3D,
   mirrorOutlineHalfToOtherRail,
@@ -40,6 +41,7 @@ export function useBoardGeometry(
   sectionIndex: number,
   overlays: OverlayState,
   geometryRevision: number,
+  meshPreviewMode: "interactivePreview" | "exportParity",
 ) {
   const outlineLowerXy = useMemo(
     () => sampleBezierSpline2D(brd.outline, SPLINE_SAMPLES),
@@ -112,8 +114,12 @@ export function useBoardGeometry(
 
   const loftData = useMemo((): LoftMeshData | null => {
     if (!overlays.loft3d || brd.crossSections.length < 2) return null;
+    if (meshPreviewMode === "exportParity") {
+      const mesh = buildBoardMeshThree(brd);
+      return mesh.ok ? { positions: mesh.positions, indices: mesh.indices } : null;
+    }
     return buildLoftMesh3D(brd, outlineLowerXy, "standard");
-  }, [brd, outlineLowerXy, overlays.loft3d, geometryRevision]);
+  }, [brd, outlineLowerXy, overlays.loft3d, geometryRevision, meshPreviewMode]);
 
   return {
     outlineLowerXy,

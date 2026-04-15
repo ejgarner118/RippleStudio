@@ -93,6 +93,20 @@ type AppSidebarProps = {
   onGenerateCamPreview: () => void;
   boardMaterialColor: "sage" | "ocean" | "sand" | "charcoal";
   onBoardMaterialColorChange: (color: "sage" | "ocean" | "sand" | "charcoal") => void;
+  meshPreviewMode: "interactivePreview" | "exportParity";
+  onMeshPreviewModeChange: (mode: "interactivePreview" | "exportParity") => void;
+  renderDebug: {
+    flatShading: boolean;
+    frontSideOnly: boolean;
+    normalView: boolean;
+    highPrecisionDepth: boolean;
+  };
+  onRenderDebugChange: (patch: Partial<{
+    flatShading: boolean;
+    frontSideOnly: boolean;
+    normalView: boolean;
+    highPrecisionDepth: boolean;
+  }>) => void;
 };
 
 export function AppSidebar({
@@ -161,6 +175,10 @@ export function AppSidebar({
   onGenerateCamPreview,
   boardMaterialColor,
   onBoardMaterialColorChange,
+  meshPreviewMode,
+  onMeshPreviewModeChange,
+  renderDebug,
+  onRenderDebugChange,
 }: AppSidebarProps) {
   const cs = brd.crossSections[sectionIndex];
   const unitLabel = boardUnitsLabel(brd);
@@ -1105,6 +1123,20 @@ export function AppSidebar({
               Show loft mesh
             </label>
             <label className="sidebar-field">
+              <span className="sidebar-field__label">Mesh preview mode</span>
+              <select
+                value={meshPreviewMode}
+                onChange={(e) =>
+                  onMeshPreviewModeChange(
+                    e.target.value as "interactivePreview" | "exportParity",
+                  )
+                }
+              >
+                <option value="exportParity">Export parity</option>
+                <option value="interactivePreview">Interactive preview</option>
+              </select>
+            </label>
+            <label className="sidebar-field">
               <span className="sidebar-field__label">Board material color</span>
               <select
                 value={boardMaterialColor}
@@ -1117,6 +1149,40 @@ export function AppSidebar({
                 <option value="sand">Sand</option>
                 <option value="charcoal">Charcoal</option>
               </select>
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={renderDebug.flatShading}
+                onChange={(e) => onRenderDebugChange({ flatShading: e.target.checked })}
+              />
+              Flat shading
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={renderDebug.frontSideOnly}
+                onChange={(e) => onRenderDebugChange({ frontSideOnly: e.target.checked })}
+              />
+              Front faces only
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={renderDebug.normalView}
+                onChange={(e) => onRenderDebugChange({ normalView: e.target.checked })}
+              />
+              Normal debug material
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={renderDebug.highPrecisionDepth}
+                onChange={(e) =>
+                  onRenderDebugChange({ highPrecisionDepth: e.target.checked })
+                }
+              />
+              High precision depth buffer
             </label>
           </div>
         </details>

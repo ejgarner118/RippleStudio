@@ -1,6 +1,7 @@
 import type { BezierBoard } from "../model/bezierBoard.js";
 import { buildJavaSurfaceMesh } from "../geometry/boardSurfaceJava.js";
 import { javaPointsToThreeYUp } from "../geometry/boardSurfaceJava.js";
+import { meshSamplingForPreset } from "../geometry/boardLoft.js";
 import { CORE_EXPORT_SOURCE_LABEL } from "../brand.js";
 import { meshToStlAscii, meshToStlBinary } from "./meshStl.js";
 import { meshToObj } from "./meshObj.js";
@@ -56,7 +57,11 @@ export function buildBoardMeshThree(board: BezierBoard): MeshExportResult {
   if (board.crossSections.length < 2) {
     return { ok: false, error: "At least two cross-sections are required for the hull mesh." };
   }
-  const raw = buildJavaSurfaceMesh(board, { lengthStepMm: 1.25, widthStepMm: 1 });
+  const steps = meshSamplingForPreset("exportParity");
+  const raw = buildJavaSurfaceMesh(board, {
+    lengthStepMm: steps.lengthStepMm,
+    widthStepMm: steps.widthStepMm,
+  });
   if (!raw || raw.positions.length < 9) {
     return { ok: false, error: "Could not build surface mesh." };
   }

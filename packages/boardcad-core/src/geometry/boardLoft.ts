@@ -8,6 +8,17 @@ import { getBoardLengthJava } from "./boardInterpolation.js";
 const MAX_TAIL_OVERHANG_MM = 320;
 const MAX_NOSE_OVERHANG_MM = 90;
 
+export type MeshSamplingPreset = "interactivePreview" | "exportParity";
+
+export function meshSamplingForPreset(
+  preset: MeshSamplingPreset,
+): { lengthStepMm: number; widthStepMm: number } {
+  if (preset === "exportParity") {
+    return { lengthStepMm: 1.25, widthStepMm: 1 };
+  }
+  return { lengthStepMm: 3, widthStepMm: 2.2 };
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(v, hi));
 }
@@ -56,7 +67,7 @@ export function buildLoftMesh3D(
     quality === "high"
       ? { lengthStepMm: 1.5, widthStepMm: 1.2 }
       : quality === "standard"
-        ? { lengthStepMm: 3, widthStepMm: 2.2 }
+        ? meshSamplingForPreset("interactivePreview")
         : { lengthStepMm: 6, widthStepMm: 4 };
 
   const bounds = getSafeMeshXBounds(board, outlineXy);
