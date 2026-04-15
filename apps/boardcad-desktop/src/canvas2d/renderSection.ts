@@ -11,6 +11,7 @@ import {
   drawMetricGrid,
   strokePolyline,
 } from "./draw";
+import type { CanvasPalette } from "../styles/themePalettes";
 
 function sectionEmptyMessage(brd: BezierBoard, sectionIndex: number): string {
   if (brd.crossSections.length === 0) {
@@ -37,12 +38,13 @@ export function renderSectionView(
   panPx = 0,
   panPy = 0,
   markerState?: ControlPointMarkerState,
+  palette?: CanvasPalette,
 ): void {
-  ctx.fillStyle = "#faf8f5";
+  ctx.fillStyle = palette?.sectionSurface ?? "#faf8f5";
   ctx.fillRect(0, 0, cw, ch);
 
   if (profileXy.length < 4 || !profileBounds) {
-    ctx.fillStyle = "#888";
+    ctx.fillStyle = palette?.emptyText ?? "#888";
     ctx.font = "13px system-ui";
     ctx.fillText(sectionEmptyMessage(brd, sectionIndex), 12, 24);
     return;
@@ -54,14 +56,17 @@ export function renderSectionView(
   if (overlays.grid) {
     const g = gridMajorStepModelUnits(brd.currentUnits);
     const sectionStep = brd.currentUnits === 2 ? Math.max(0.25, g * 0.25) : brd.currentUnits === 1 ? Math.max(1, g * 0.2) : Math.max(5, g * 0.2);
-    drawMetricGrid(ctx, tf, ch, profileBounds, sectionStep);
+    drawMetricGrid(ctx, tf, ch, profileBounds, sectionStep, palette?.grid);
   }
 
-  strokePolyline(ctx, profileXy, tf, ch, { color: "#2d6a4f", width: 2 });
+  strokePolyline(ctx, profileXy, tf, ch, {
+    color: palette?.sectionRail ?? "#2d6a4f",
+    width: 2,
+  });
 
   const sp = brd.crossSections[sectionIndex]?.getBezierSpline();
   if (sp && overlays.controlPoints) {
-    drawControlPoints(ctx, sp, tf, ch, markerState);
+    drawControlPoints(ctx, sp, tf, ch, markerState, palette);
   }
   if (overlays.guidePoints && brd.crossSections[sectionIndex]) {
     drawGuidePoints(
@@ -69,6 +74,7 @@ export function renderSectionView(
       brd.crossSections[sectionIndex]!.getGuidePoints(),
       tf,
       ch,
+      palette,
     );
   }
 }

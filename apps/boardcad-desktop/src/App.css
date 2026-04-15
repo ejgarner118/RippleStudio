@@ -44,14 +44,41 @@ select:focus:not(:focus-visible) {
 }
 
 .app-shell {
+  --app-sidebar-width: 280px;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
+  grid-template-columns: minmax(220px, var(--app-sidebar-width)) 8px 1fr;
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    "toolbar toolbar"
-    "sidebar workspace";
+    "toolbar toolbar toolbar"
+    "sidebar sidebar-resize workspace";
+}
+
+.app-shell__sidebar-resize {
+  grid-area: sidebar-resize;
+  cursor: col-resize;
+  background: color-mix(in srgb, var(--surface-panel) 75%, var(--surface-app));
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.app-shell__sidebar-resize::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 44px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+}
+
+.app-shell__sidebar-resize:hover,
+.app-shell__sidebar-resize[data-dragging="true"] {
+  background: color-mix(in srgb, var(--surface-panel) 62%, var(--accent-muted));
 }
 
 /* ——— Toolbar ——— */
@@ -247,7 +274,7 @@ select:focus:not(:focus-visible) {
   align-items: center;
 }
 
-.btn--sm {
+.app-shell .btn--sm {
   font-size: 0.8125rem;
   padding: 0.35rem 0.65rem;
 }
@@ -622,7 +649,7 @@ select:focus:not(:focus-visible) {
   align-items: center;
 }
 
-.btn--panel-reset {
+.app-shell .btn--panel-reset {
   flex-shrink: 0;
   padding: 0.2rem 0.5rem;
   font-size: 0.74rem;
@@ -635,13 +662,13 @@ select:focus:not(:focus-visible) {
   color: var(--text-secondary);
 }
 
-.btn--panel-reset:hover {
+.app-shell .btn--panel-reset:hover {
   background: var(--surface-canvas);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.btn--panel-reset:focus-visible {
+.app-shell .btn--panel-reset:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -708,7 +735,7 @@ select:focus:not(:focus-visible) {
 }
 
 /* ——— Buttons ——— */
-.btn {
+.app-shell .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -718,11 +745,19 @@ select:focus:not(:focus-visible) {
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-elevated) 95%, transparent);
+  color: var(--text-secondary);
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.btn:disabled {
+.app-shell .btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.app-shell .btn:disabled {
   cursor: not-allowed;
   color: var(--btn-disabled-text);
   background: var(--btn-disabled-bg);
@@ -730,48 +765,48 @@ select:focus:not(:focus-visible) {
   opacity: 1;
 }
 
-.btn--primary {
+.app-shell .btn--primary {
   background: var(--btn-primary-bg);
   color: var(--text-on-accent);
   border-color: var(--btn-primary-border);
 }
 
-.btn--primary:hover:not(:disabled) {
+.app-shell .btn--primary:hover:not(:disabled) {
   background: var(--btn-primary-bg-hover);
   border-color: var(--btn-primary-bg-hover);
 }
 
-.btn--primary:active:not(:disabled) {
+.app-shell .btn--primary:active:not(:disabled) {
   background: var(--btn-primary-bg-active);
   border-color: var(--btn-primary-bg-active);
 }
 
-.btn--ghost {
+.app-shell .btn--ghost {
   background: transparent;
   color: var(--text-primary);
   border-color: var(--border-subtle);
 }
 
-.btn--ghost:hover:not(:disabled) {
+.app-shell .btn--ghost:hover:not(:disabled) {
   background: var(--btn-ghost-bg-hover);
 }
 
-.btn--ghost:active:not(:disabled) {
+.app-shell .btn--ghost:active:not(:disabled) {
   background: var(--btn-ghost-bg-active);
 }
 
-.btn--sm {
+.app-shell .btn--sm {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-sm);
 }
 
-.btn--subtle {
+.app-shell .btn--subtle {
   background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
   color: var(--text-secondary);
   border-color: color-mix(in srgb, var(--border-subtle) 85%, transparent);
 }
 
-.btn--subtle:hover:not(:disabled) {
+.app-shell .btn--subtle:hover:not(:disabled) {
   background: var(--surface-canvas);
   color: var(--text-primary);
   border-color: var(--border-strong);
@@ -924,7 +959,7 @@ select:focus:not(:focus-visible) {
   padding: var(--space-4);
 }
 
-.icon-btn {
+.app-shell .icon-btn {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
@@ -937,7 +972,7 @@ select:focus:not(:focus-visible) {
   cursor: pointer;
 }
 
-.icon-btn:hover {
+.app-shell .icon-btn:hover {
   background: var(--accent-muted);
   color: var(--text-primary);
 }
@@ -1074,7 +1109,7 @@ select:focus:not(:focus-visible) {
   line-height: 1.35;
 }
 
-kbd {
+.app-shell kbd {
   font-family: var(--font-mono);
 }
 
@@ -1114,7 +1149,7 @@ kbd {
   background: var(--surface-canvas);
 }
 
-.menu__item code {
+.app-shell .menu__item code {
   font-family: var(--font-mono);
   font-size: 0.85em;
 }
@@ -1160,6 +1195,10 @@ kbd {
       "toolbar"
       "sidebar"
       "workspace";
+  }
+
+  .app-shell__sidebar-resize {
+    display: none;
   }
 
   .sidebar {

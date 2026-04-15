@@ -12,6 +12,7 @@ import {
   drawMetricGrid,
   strokePolyline,
 } from "./draw";
+import type { CanvasPalette } from "../styles/themePalettes";
 
 export function renderPlanView(
   ctx: CanvasRenderingContext2D,
@@ -28,8 +29,9 @@ export function renderPlanView(
   markerState?: ControlPointMarkerState,
   planReference?: { layer: ReferenceImageLayer; img: HTMLImageElement | null },
   finBoxes?: Array<{ x: number; y: number; cantDeg: number; toeInDeg: number }>,
+  palette?: CanvasPalette,
 ): void {
-  ctx.fillStyle = "#f4f4f8";
+  ctx.fillStyle = palette?.planSurface ?? "#f4f4f8";
   ctx.fillRect(0, 0, cw, ch);
 
   if (!planBounds) return;
@@ -37,7 +39,7 @@ export function renderPlanView(
   const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {
-    drawMetricGrid(ctx, tf, ch, planBounds, gridMajorStepModelUnits(brd.currentUnits));
+    drawMetricGrid(ctx, tf, ch, planBounds, gridMajorStepModelUnits(brd.currentUnits), palette?.grid);
   }
 
   if (planReference?.img && planReference.layer.enabled && planReference.layer.objectUrl) {
@@ -47,7 +49,7 @@ export function renderPlanView(
   if (overlays.ghost) {
     ctx.save();
     ctx.globalAlpha = 0.22;
-    const ghost = { color: "#9a9aaa", width: 2, dash: [6, 4] as number[] };
+    const ghost = { color: palette?.outlineGhost ?? "#9a9aaa", width: 2, dash: [6, 4] as number[] };
     if (outlineLowerXy.length >= 4) {
       strokePolyline(ctx, outlineLowerXy, tf, ch, ghost);
     }
@@ -57,7 +59,7 @@ export function renderPlanView(
     ctx.restore();
   }
 
-  const rail = { color: "#1a5fb4", width: 2.5 };
+  const rail = { color: palette?.outlineRail ?? "#1a5fb4", width: 2.5 };
   if (outlineLowerXy.length >= 4) {
     strokePolyline(ctx, outlineLowerXy, tf, ch, rail);
   }
@@ -66,10 +68,10 @@ export function renderPlanView(
   }
 
   if (overlays.guidePoints) {
-    drawGuidePointsMirrored(ctx, brd.outlineGuidePoints, tf, ch);
+    drawGuidePointsMirrored(ctx, brd.outlineGuidePoints, tf, ch, palette);
   }
   if (overlays.controlPoints) {
-    drawControlPointsMirroredOutline(ctx, brd.outline, tf, ch, markerState);
+    drawControlPointsMirroredOutline(ctx, brd.outline, tf, ch, markerState, palette);
   }
 
   if (finBoxes && finBoxes.length > 0) {
@@ -80,10 +82,12 @@ export function renderPlanView(
       const r = Math.max(4, Math.min(8, tf.s * 12));
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = "#d97b00";
+      ctx.strokeStyle = palette?.finAccent ?? "#d97b00";
       ctx.lineWidth = 1.6;
       ctx.stroke();
-      ctx.fillStyle = "rgba(217,123,0,0.15)";
+      const finColor = palette?.finAccent ?? "#d97b00";
+      const alphaHex = finColor.length === 7 ? `${finColor}26` : "rgba(217,123,0,0.15)";
+      ctx.fillStyle = alphaHex;
       ctx.fill();
       const toeDir = ((b.y >= 0 ? -1 : 1) * b.toeInDeg * Math.PI) / 180;
       const dx = Math.cos(toeDir) * (r + 8);
@@ -91,7 +95,7 @@ export function renderPlanView(
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.lineTo(sx + dx, sy - dy);
-      ctx.strokeStyle = "rgba(217,123,0,0.9)";
+      ctx.strokeStyle = palette?.finAccent ?? "rgba(217,123,0,0.9)";
       ctx.lineWidth = 1.2;
       ctx.stroke();
     }

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import type { BoardCadSettings } from "@boardcad/core";
 import { APP_DISPLAY_NAME } from "../constants/brand";
 import { primaryModifierLabel } from "../lib/keyboardGuards";
 
@@ -26,8 +25,6 @@ type AppToolbarProps = {
   onFit2d: () => void;
   onReset3d: () => void;
   onResetAllViews: () => void;
-  theme: BoardCadSettings["theme"];
-  onThemeChange: (theme: BoardCadSettings["theme"]) => void;
   onKeyboardShortcuts: () => void;
   onBrdFormatHelp: () => void;
   onAbout: () => void;
@@ -55,8 +52,6 @@ export function AppToolbar({
   onFit2d,
   onReset3d,
   onResetAllViews,
-  theme,
-  onThemeChange,
   onKeyboardShortcuts,
   onBrdFormatHelp,
   onAbout,
@@ -332,52 +327,6 @@ export function AppToolbar({
                 }}
               >
                 Reset all views (2D + 3D)
-              </button>
-            </li>
-            <li className="menu__sep" role="separator" />
-            <li className="menu__label" role="none">
-              Theme
-            </li>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className="menu__item"
-                onClick={() => {
-                  closeMenus();
-                  onThemeChange("system");
-                }}
-              >
-                {theme === "system" ? "✓ " : ""}
-                Match system
-              </button>
-            </li>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className="menu__item"
-                onClick={() => {
-                  closeMenus();
-                  onThemeChange("light");
-                }}
-              >
-                {theme === "light" ? "✓ " : ""}
-                Light
-              </button>
-            </li>
-            <li role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className="menu__item"
-                onClick={() => {
-                  closeMenus();
-                  onThemeChange("dark");
-                }}
-              >
-                {theme === "dark" ? "✓ " : ""}
-                Dark
               </button>
             </li>
           </ul>

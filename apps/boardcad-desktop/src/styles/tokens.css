@@ -4,6 +4,13 @@
   --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", monospace;
 
+  --brand-deep-900: #0a192f;
+  --brand-deep-800: #0d2744;
+  --brand-foam-500: #00f5ff;
+  --brand-foam-400: #5ee6ee;
+  --brand-ink-900: #081121;
+  --brand-salt-50: #f8fafc;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -21,9 +28,14 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-pill: 999px;
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 14px 36px rgba(15, 23, 42, 0.2);
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow-md);
+  --elevation-3: var(--shadow-lg);
 
   /* Light theme */
   --surface-app: #e8ebf2;
@@ -36,13 +48,20 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
+  --text-inverse: #ffffff;
   --accent: #0c5d8f;
   --accent-hover: #0a4d75;
   --accent-muted: rgba(12, 93, 143, 0.12);
+  --accent-strong: #0a3054;
   --focus-ring: #0c5d8f;
   --focus-ring-offset: #f8fbff;
   --text-on-accent: #ffffff;
+  --surface-hover: color-mix(in srgb, var(--surface-elevated) 82%, var(--accent) 18%);
+  --surface-active: color-mix(in srgb, var(--surface-elevated) 74%, var(--accent) 26%);
   --surface-overlay: rgba(15, 23, 42, 0.45);
+  --surface-glass: rgba(248, 250, 252, 0.06);
+  --surface-glass-strong: rgba(248, 250, 252, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.15);
   --toolbar-bg: linear-gradient(180deg, #0d3b66 0%, #0a3054 100%);
   --toolbar-fg: #f1f5f9;
   --danger: #b42318;
@@ -66,9 +85,55 @@
   --btn-disabled-bg: color-mix(in srgb, var(--surface-elevated) 88%, var(--surface-panel));
   --btn-disabled-text: color-mix(in srgb, var(--text-muted) 85%, var(--surface-panel));
   --btn-disabled-border: color-mix(in srgb, var(--border-subtle) 75%, transparent);
+  --control-hover-bg: color-mix(in srgb, var(--surface-panel) 75%, var(--accent) 25%);
+  --control-active-bg: color-mix(in srgb, var(--surface-panel) 62%, var(--accent) 38%);
+  --control-focus-ring: var(--focus-ring);
+  --state-danger-text: color-mix(in srgb, var(--danger) 78%, var(--text-primary));
+  --state-success-text: color-mix(in srgb, var(--success) 78%, var(--text-primary));
+  --state-warning-text: color-mix(in srgb, var(--warning) 80%, var(--text-primary));
+  --state-info-text: color-mix(in srgb, var(--info) 78%, var(--text-primary));
+
+  --canvas-surface-plan: #f4f4f8;
+  --canvas-surface-profile: #f8f6ff;
+  --canvas-surface-section: #faf8f5;
+  --canvas-grid: #d4d8e2;
+  --canvas-empty-text: #677389;
+  --canvas-outline-rail: #1a5fb4;
+  --canvas-outline-ghost: #9a9aaa;
+  --canvas-profile-deck: #8b5a2b;
+  --canvas-profile-bottom: #3d4f63;
+  --canvas-section-rail: #2d6a4f;
+  --canvas-guide-point: #3584e4;
+  --canvas-knot-primary: #c01c28;
+  --canvas-knot-selected: #2563eb;
+  --canvas-knot-hover: #3b82f6;
+  --canvas-handle: #f6ad55;
+  --canvas-handle-selected: #f59e0b;
+  --canvas-handle-hover: #fbbf24;
+  --canvas-handle-arm: #8f4d00;
+  --canvas-fin-accent: #d97b00;
+
   --three-bg: #e8ecf4;
   --three-grid-major: #b0b8c8;
   --three-grid-minor: #c8ccd8;
+  --three-outline: #1a5fb4;
+  --three-board-sage: #5a8f5a;
+  --three-board-ocean: #3e7aa5;
+  --three-board-sand: #b69e73;
+  --three-board-charcoal: #4f545a;
+
+  --site-primary-deep: var(--brand-deep-900);
+  --site-accent-foam: var(--brand-foam-500);
+  --site-text-salt: var(--brand-salt-50);
+  --site-glass-border: var(--glass-border);
+  --site-blur-std: blur(12px);
+  --site-transition-fluid: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Backward-compatible site aliases */
+  --primary-deep: var(--site-primary-deep);
+  --accent-foam: var(--site-accent-foam);
+  --text-salt: var(--site-text-salt);
+  --blur-std: var(--site-blur-std);
+  --transition-fluid: var(--site-transition-fluid);
 }
 
 [data-theme="dark"] {
@@ -82,12 +147,19 @@
   --text-primary: #f1f5f9;
   --text-secondary: #cbd5e1;
   --text-muted: #94a3b8;
+  --text-inverse: #020617;
   --accent: #5eb8e8;
   --accent-hover: #7ec8f0;
   --accent-muted: rgba(94, 184, 232, 0.15);
+  --accent-strong: #1e7ead;
   --focus-ring: #7ec8f0;
   --focus-ring-offset: #1d222b;
+  --surface-hover: color-mix(in srgb, var(--surface-elevated) 74%, var(--accent) 26%);
+  --surface-active: color-mix(in srgb, var(--surface-elevated) 64%, var(--accent) 36%);
   --surface-overlay: rgba(2, 6, 23, 0.62);
+  --surface-glass: rgba(15, 23, 42, 0.58);
+  --surface-glass-strong: rgba(15, 23, 42, 0.76);
+  --glass-border: rgba(126, 200, 240, 0.26);
   --toolbar-bg: linear-gradient(180deg, #0a1628 0%, #070f18 100%);
   --toolbar-fg: #e2e8f0;
   --warning: #f7b955;
@@ -100,11 +172,41 @@
   --state-warning-border: color-mix(in srgb, var(--warning) 44%, transparent);
   --state-info-bg: color-mix(in srgb, var(--info) 14%, var(--surface-panel));
   --state-info-border: color-mix(in srgb, var(--info) 44%, transparent);
+  --control-hover-bg: color-mix(in srgb, var(--surface-panel) 70%, var(--accent) 30%);
+  --control-active-bg: color-mix(in srgb, var(--surface-panel) 58%, var(--accent) 42%);
+  --state-danger-text: color-mix(in srgb, var(--danger) 86%, var(--text-primary));
+  --state-success-text: color-mix(in srgb, var(--success) 86%, var(--text-primary));
+  --state-warning-text: color-mix(in srgb, var(--warning) 88%, var(--text-primary));
+  --state-info-text: color-mix(in srgb, var(--info) 86%, var(--text-primary));
   --btn-primary-bg-active: color-mix(in srgb, var(--accent-hover) 82%, black);
   --btn-ghost-bg-active: color-mix(in srgb, var(--accent-muted) 75%, black);
+  --canvas-surface-plan: #1b212b;
+  --canvas-surface-profile: #1d212c;
+  --canvas-surface-section: #21252e;
+  --canvas-grid: #3f4a5e;
+  --canvas-empty-text: #a3b0c5;
+  --canvas-outline-rail: #6ab0ff;
+  --canvas-outline-ghost: #6e7992;
+  --canvas-profile-deck: #e7b375;
+  --canvas-profile-bottom: #9cb4cc;
+  --canvas-section-rail: #72d4a8;
+  --canvas-guide-point: #7fb6ff;
+  --canvas-knot-primary: #f0627b;
+  --canvas-knot-selected: #7fb6ff;
+  --canvas-knot-hover: #9bcbff;
+  --canvas-handle: #f6c186;
+  --canvas-handle-selected: #ffcf72;
+  --canvas-handle-hover: #ffdca0;
+  --canvas-handle-arm: #be8f59;
+  --canvas-fin-accent: #f0ab56;
   --three-bg: #1a1f28;
   --three-grid-major: #4a5568;
   --three-grid-minor: #3d4556;
+  --three-outline: #6ab0ff;
+  --three-board-sage: #7eb89a;
+  --three-board-ocean: #5a9cc9;
+  --three-board-sand: #ceb48a;
+  --three-board-charcoal: #8f98a7;
 }
 
 @media (prefers-reduced-motion: reduce) {

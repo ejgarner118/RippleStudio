@@ -11,6 +11,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SCALE_3D } from "../constants";
+import { toSceneColorNumber, type ScenePalette } from "../styles/themePalettes";
 import type { CenterMm, LoftMeshData } from "../types/view";
 
 export type OrbitControlsApi = { reset: () => void };
@@ -368,6 +369,7 @@ type BoardScene3DProps = {
   orbitRef: RefObject<OrbitControlsApi | null>;
   viewResetNonce: number;
   boardColor: "sage" | "ocean" | "sand" | "charcoal";
+  scenePalette: ScenePalette;
   meshPreviewMode: "interactivePreview" | "exportParity";
   renderDebug: {
     flatShading: boolean;
@@ -387,15 +389,17 @@ export function BoardScene3D({
   orbitRef,
   viewResetNonce,
   boardColor,
+  scenePalette,
   meshPreviewMode,
   renderDebug,
 }: BoardScene3DProps) {
   void meshPreviewMode;
-  const background = isDark ? "#1a1f28" : "#e8ecf4";
-  const outlineColor = isDark ? 0x6ab0ff : 0x1a5fb4;
-  const gridMajor = isDark ? 0x4a5568 : 0xb0b8c8;
-  const gridMinor = isDark ? 0x3d4556 : 0xc8ccd8;
-  const meshColor = boardColor === "ocean" ? "#3e7aa5" : boardColor === "sand" ? "#b69e73" : boardColor === "charcoal" ? "#4f545a" : "#5a8f5a";
+  void isDark;
+  const background = scenePalette.background;
+  const outlineColor = toSceneColorNumber(scenePalette.outline);
+  const gridMajor = toSceneColorNumber(scenePalette.gridMajor);
+  const gridMinor = toSceneColorNumber(scenePalette.gridMinor);
+  const meshColor = scenePalette.board[boardColor];
 
   return (
     <Canvas

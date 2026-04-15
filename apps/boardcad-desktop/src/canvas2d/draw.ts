@@ -1,4 +1,5 @@
 import type { BezierSpline, BBox2D } from "@boardcad/core";
+import type { CanvasPalette } from "../styles/themePalettes";
 
 /** Optional `panPx` / `panPy` shift drawing in canvas pixels after scale (2D pan). */
 export type FitTransform = {
@@ -109,9 +110,10 @@ export function drawControlPointsMirroredOutline(
   tf: FitTransform,
   ch: number,
   markerState?: ControlPointMarkerState,
+  palette?: CanvasPalette,
 ): void {
   const n = spline.getNrOfControlPoints();
-  ctx.strokeStyle = "#8f4d00";
+  ctx.strokeStyle = palette?.handleArm ?? "#8f4d00";
   ctx.lineWidth = 1;
   for (let i = 0; i < n; i++) {
     const k = spline.getControlPoint(i);
@@ -140,7 +142,11 @@ export function drawControlPointsMirroredOutline(
       tf,
       ch,
       selected?.point === "prev" ? 4 : hover?.point === "prev" ? 3.5 : 2.5,
-      selected?.point === "prev" ? "#f59e0b" : hover?.point === "prev" ? "#fbbf24" : "#f6ad55",
+      selected?.point === "prev"
+        ? (palette?.handleSelected ?? "#f59e0b")
+        : hover?.point === "prev"
+          ? (palette?.handleHover ?? "#fbbf24")
+          : (palette?.handle ?? "#f6ad55"),
       true,
     );
     drawMirroredDisks(
@@ -150,7 +156,11 @@ export function drawControlPointsMirroredOutline(
       tf,
       ch,
       selected?.point === "next" ? 4 : hover?.point === "next" ? 3.5 : 2.5,
-      selected?.point === "next" ? "#f59e0b" : hover?.point === "next" ? "#fbbf24" : "#f6ad55",
+      selected?.point === "next"
+        ? (palette?.handleSelected ?? "#f59e0b")
+        : hover?.point === "next"
+          ? (palette?.handleHover ?? "#fbbf24")
+          : (palette?.handle ?? "#f6ad55"),
       true,
     );
     drawMirroredDisks(
@@ -160,7 +170,11 @@ export function drawControlPointsMirroredOutline(
       tf,
       ch,
       selected?.point === "end" ? 6 : hover?.point === "end" ? 5 : 4,
-      selected?.point === "end" ? "#2563eb" : hover?.point === "end" ? "#3b82f6" : "#c01c28",
+      selected?.point === "end"
+        ? (palette?.knotSelected ?? "#2563eb")
+        : hover?.point === "end"
+          ? (palette?.knotHover ?? "#3b82f6")
+          : (palette?.knotPrimary ?? "#c01c28"),
       true,
     );
   }
@@ -171,9 +185,10 @@ export function drawGuidePointsMirrored(
   pts: { x: number; y: number }[],
   tf: FitTransform,
   ch: number,
+  palette?: CanvasPalette,
 ): void {
   for (const p of pts) {
-    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 3, "#3584e4", true);
+    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 3, palette?.guidePoint ?? "#3584e4", true);
   }
 }
 
@@ -183,9 +198,10 @@ export function drawControlPoints(
   tf: FitTransform,
   ch: number,
   markerState?: ControlPointMarkerState,
+  palette?: CanvasPalette,
 ): void {
   const n = spline.getNrOfControlPoints();
-  ctx.strokeStyle = "#8f4d00";
+  ctx.strokeStyle = palette?.handleArm ?? "#8f4d00";
   ctx.lineWidth = 1;
   for (let i = 0; i < n; i++) {
     const k = spline.getControlPoint(i);
@@ -211,7 +227,11 @@ export function drawControlPoints(
       tf,
       ch,
       selected?.point === "prev" ? 4 : hover?.point === "prev" ? 3.5 : 2.5,
-      selected?.point === "prev" ? "#f59e0b" : hover?.point === "prev" ? "#fbbf24" : "#f6ad55",
+      selected?.point === "prev"
+        ? (palette?.handleSelected ?? "#f59e0b")
+        : hover?.point === "prev"
+          ? (palette?.handleHover ?? "#fbbf24")
+          : (palette?.handle ?? "#f6ad55"),
       false,
     );
     drawMirroredDisks(
@@ -221,7 +241,11 @@ export function drawControlPoints(
       tf,
       ch,
       selected?.point === "next" ? 4 : hover?.point === "next" ? 3.5 : 2.5,
-      selected?.point === "next" ? "#f59e0b" : hover?.point === "next" ? "#fbbf24" : "#f6ad55",
+      selected?.point === "next"
+        ? (palette?.handleSelected ?? "#f59e0b")
+        : hover?.point === "next"
+          ? (palette?.handleHover ?? "#fbbf24")
+          : (palette?.handle ?? "#f6ad55"),
       false,
     );
     drawMirroredDisks(
@@ -231,7 +255,11 @@ export function drawControlPoints(
       tf,
       ch,
       selected?.point === "end" ? 6 : hover?.point === "end" ? 5 : 4,
-      selected?.point === "end" ? "#2563eb" : hover?.point === "end" ? "#3b82f6" : "#c01c28",
+      selected?.point === "end"
+        ? (palette?.knotSelected ?? "#2563eb")
+        : hover?.point === "end"
+          ? (palette?.knotHover ?? "#3b82f6")
+          : (palette?.knotPrimary ?? "#c01c28"),
       false,
     );
   }
@@ -242,9 +270,10 @@ export function drawGuidePoints(
   pts: { x: number; y: number }[],
   tf: FitTransform,
   ch: number,
+  palette?: CanvasPalette,
 ): void {
   for (const p of pts) {
-    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 3, "#3584e4", false);
+    drawMirroredDisks(ctx, p.x, p.y, tf, ch, 3, palette?.guidePoint ?? "#3584e4", false);
   }
 }
 
@@ -255,8 +284,9 @@ export function drawMetricGrid(
   ch: number,
   bounds: BBox2D,
   stepModel = 50,
+  color = "#ddd",
 ): void {
-  ctx.strokeStyle = "#ddd";
+  ctx.strokeStyle = color;
   ctx.lineWidth = 1;
   const loX = Math.floor(bounds.minX / stepModel) * stepModel;
   const hiX = Math.ceil(bounds.maxX / stepModel) * stepModel;

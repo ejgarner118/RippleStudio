@@ -40,34 +40,23 @@ function writeStored(s: BoardCadSettings): void {
 export type ResolvedTheme = "light" | "dark";
 
 export function useDesktopSettings() {
-  const [settings, setSettingsState] = useState<BoardCadSettings>(() => readStored());
+  const [settings, setSettingsState] = useState<BoardCadSettings>(() => ({
+    ...readStored(),
+    theme: "dark" as const,
+  }));
 
   const setSettings = useCallback((patch: Partial<BoardCadSettings>) => {
     setSettingsState((prev) => {
-      const next = { ...prev, ...patch };
+      // Theme switching is intentionally locked to dark for site/app parity.
+      const next: BoardCadSettings = { ...prev, ...patch, theme: "dark" };
       writeStored(next);
       return next;
     });
   }, []);
 
-  const [systemDark, setSystemDark] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : false,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setSystemDark(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
   const resolvedTheme: ResolvedTheme = useMemo(() => {
-    if (settings.theme === "light") return "light";
-    if (settings.theme === "dark") return "dark";
-    return systemDark ? "dark" : "light";
-  }, [settings.theme, systemDark]);
+    return "dark";
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;

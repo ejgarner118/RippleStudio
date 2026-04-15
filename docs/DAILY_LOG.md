@@ -50,6 +50,23 @@ High-volume stabilization and modernization day focused on mesh reliability, edi
 - Capture any regressions from interaction changes in targeted tests.
 - Keep commit scopes focused (mesh vs UI vs workflow) for easier rollback/debug.
 
+### Same-day update: live push — app shell, dark theme lock, deployment
+
+**Summary (this session)**
+
+- **App visual parity:** Expanded shared tokens (`tokens.css`), added `themePalettes.ts` for 2D canvas and 3D scene colors from semantic CSS variables; wired plan/profile/section renderers and `BoardScene3D` to shared palettes.
+- **Site vs app CSS:** Namespaced marketing vs app primitives (e.g. `.site-shell` buttons vs `.app-shell` buttons) to prevent style collisions; `site.css` imports shared tokens and uses site semantic aliases.
+- **Dark-only UX:** Removed View menu theme switching; `useDesktopSettings` forces `theme: "dark"` and `resolvedTheme: "dark"` so UI matches the marketing site without half-light/half-dark states.
+- **Work areas:** Fixed light-tinted canvases/panels by stabilizing dark palette resolution (avoid first-paint light fallback) and aligning surfaces to dark tokens.
+- **Sidebar:** Draggable resize handle between sidebar and workspace; width persisted in `localStorage` (clamped min/max); hidden on compact layout.
+- **Buttons:** Default `.app-shell .btn` base styles aligned with dark surfaces (border, hover, text contrast) so plain `btn` + `btn--sm` variants match the theme.
+- **Quality:** Lint, `boardcad-web` tests, and production build verified before push.
+
+**Deployment**
+
+- Changes committed and pushed to `origin/main` on GitHub.
+- Production deploy triggered on Vercel (`vercel --prod` / linked project).
+
 ---
 
 ## 2026-04-14 (initialized from git history)

@@ -13,6 +13,7 @@ import {
   drawMetricGrid,
   strokePolyline,
 } from "./draw";
+import type { CanvasPalette } from "../styles/themePalettes";
 
 const EMPTY_HINT = "Enable deck and/or bottom overlays to view and edit profile splines.";
 
@@ -31,12 +32,13 @@ export function renderProfileView(
   deckMarkers?: ControlPointMarkerState,
   bottomMarkers?: ControlPointMarkerState,
   profileReference?: { layer: ReferenceImageLayer; img: HTMLImageElement | null },
+  palette?: CanvasPalette,
 ): void {
-  ctx.fillStyle = "#f8f6ff";
+  ctx.fillStyle = palette?.profileSurface ?? "#f8f6ff";
   ctx.fillRect(0, 0, cw, ch);
 
   if (!profileStringerBounds) {
-    ctx.fillStyle = "#888";
+    ctx.fillStyle = palette?.emptyText ?? "#888";
     ctx.font = "13px system-ui";
     ctx.fillText(EMPTY_HINT, 12, 24);
     return;
@@ -47,7 +49,7 @@ export function renderProfileView(
 
   if (overlays.grid) {
     const step = gridMajorStepModelUnits(brd.currentUnits) * 0.5;
-    drawMetricGrid(ctx, tf, ch, profileStringerBounds, step > 0 ? step : 1);
+    drawMetricGrid(ctx, tf, ch, profileStringerBounds, step > 0 ? step : 1, palette?.grid);
   }
 
   if (profileReference?.img && profileReference.layer.enabled && profileReference.layer.objectUrl) {
@@ -63,14 +65,14 @@ export function renderProfileView(
 
   if (overlays.profileBottom && bottomXy.length >= 4) {
     strokePolyline(ctx, bottomXy, tf, ch, {
-      color: "#3d4f63",
+      color: palette?.profileBottom ?? "#3d4f63",
       width: 2,
       dash: [5, 4],
     });
   }
   if (overlays.profileDeck && deckXy.length >= 4) {
     strokePolyline(ctx, deckXy, tf, ch, {
-      color: "#8b5a2b",
+      color: palette?.profileDeck ?? "#8b5a2b",
       width: 2,
       dash: [2, 0],
     });
@@ -78,18 +80,18 @@ export function renderProfileView(
 
   if (overlays.guidePoints) {
     if (overlays.profileDeck) {
-      drawGuidePoints(ctx, brd.deckGuidePoints, tf, ch);
+      drawGuidePoints(ctx, brd.deckGuidePoints, tf, ch, palette);
     }
     if (overlays.profileBottom) {
-      drawGuidePoints(ctx, brd.bottomGuidePoints, tf, ch);
+      drawGuidePoints(ctx, brd.bottomGuidePoints, tf, ch, palette);
     }
   }
   if (overlays.controlPoints) {
     if (overlays.profileDeck) {
-      drawControlPoints(ctx, brd.deck, tf, ch, deckMarkers);
+      drawControlPoints(ctx, brd.deck, tf, ch, deckMarkers, palette);
     }
     if (overlays.profileBottom) {
-      drawControlPoints(ctx, brd.bottom, tf, ch, bottomMarkers);
+      drawControlPoints(ctx, brd.bottom, tf, ch, bottomMarkers, palette);
     }
   }
 }

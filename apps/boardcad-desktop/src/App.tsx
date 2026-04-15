@@ -1,6 +1,8 @@
 import {
   lazy,
   Suspense,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useReducer,
@@ -115,6 +117,7 @@ import {
 } from "./types/referenceImage";
 import type { BoardEditMode } from "./types/editMode";
 import { APP_WINDOW_TITLE_SUFFIX } from "./constants/brand";
+import { getCanvasPalette, getScenePalette } from "./styles/themePalettes";
 import "./App.css";
 
 type FinBox = {
@@ -160,6 +163,9 @@ export function templatePresetForNewBoard(preset: NewBoardPreset): TemplateFileP
 }
 
 const KEYBOARD_PAN_STEP_PX = 24;
+const SIDEBAR_WIDTH_STORAGE_KEY = "ripple.desktop.sidebar.width.v1";
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 420;
 
 export default function App() {
   const { settings, setSettings, resolvedTheme } = useDesktopSettings();
@@ -222,8 +228,19 @@ export default function App() {
   const [camPreviewSummary, setCamPreviewSummary] = useState<ReturnType<typeof previewToolpath> | null>(null);
   const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
   const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return 280;
+    const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(stored)
+      ? Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, stored))
+      : 280;
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   const orbitRef = useRef<OrbitControlsApi | null>(null);
+  const appShellRef = useRef<HTMLDivElement | null>(null);
+  const canvasPalette = useMemo(() => getCanvasPalette(resolvedTheme), [resolvedTheme]);
+  const scenePalette = useMemo(() => getScenePalette(resolvedTheme), [resolvedTheme]);
 
   const canvasPlanRef = useRef<HTMLCanvasElement>(null);
   const canvasProfileRef = useRef<HTMLCanvasElement>(null);
@@ -431,6 +448,11 @@ export default function App() {
   }, [brd.crossSections.length]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(sidebarWidth)));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
     const prep = prepareCanvas2D(canvasPlanRef.current);
     if (!prep) return;
     const { ctx, cw, ch } = prep;
@@ -449,6 +471,7 @@ export default function App() {
       markerStateFor("outline"),
       { layer: referenceImages.plan, img: planRefImg },
       finLayout.boxes,
+      canvasPalette,
     );
   }, [
     brd,
@@ -466,6 +489,7 @@ export default function App() {
     referenceImages.plan,
     planRefImg,
     finLayout.boxes,
+    canvasPalette,
   ]);
 
   useEffect(() => {
@@ -487,6 +511,7 @@ export default function App() {
       markerStateFor("deck"),
       markerStateFor("bottom"),
       { layer: referenceImages.profile, img: profileRefImg },
+      canvasPalette,
     );
   }, [
     brd,
@@ -503,6 +528,7 @@ export default function App() {
     boardRevision,
     referenceImages.profile,
     profileRefImg,
+    canvasPalette,
   ]);
 
   useEffect(() => {
@@ -522,6 +548,7 @@ export default function App() {
       sectionPan.x,
       sectionPan.y,
       markerStateFor("section"),
+      canvasPalette,
     );
   }, [
     brd,
@@ -536,6 +563,7 @@ export default function App() {
     resetViewSectionNonce,
     canvasLayoutNonce,
     boardRevision,
+    canvasPalette,
   ]);
 
   const showToast = useCallback((message: string, tone: ToastTone = "info") => {
@@ -1772,9 +1800,37 @@ export default function App() {
           selectedControlPointKind ? ` (${selectedControlPointKind})` : ""
         }`;
   const geometryIssues = computeGeometryIssues();
+  const appShellStyle = {
+    "--app-sidebar-width": `${sidebarWidth}px`,
+  } as CSSProperties;
+
+  const onSidebarResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const root = appShellRef.current;
+    if (!root) return;
+    e.preventDefault();
+    const pointerId = e.pointerId;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    setIsResizingSidebar(true);
+    e.currentTarget.setPointerCapture(pointerId);
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX;
+      const next = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, startWidth + delta));
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      setIsResizingSidebar(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }, [sidebarWidth]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={appShellRef} style={appShellStyle}>
       <AppToolbar
         onNew={() => void newBoard()}
         onOpen={() => void openBoard()}
@@ -1790,8 +1846,6 @@ export default function App() {
         onFit2d={reset2dViews}
         onReset3d={reset3dView}
         onResetAllViews={resetAllViews}
-        theme={settings.theme}
-        onThemeChange={(theme) => setSettings({ theme })}
         onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onBrdFormatHelp={() => setBrdHelpOpen(true)}
         onAbout={() => setAboutOpen(true)}
@@ -1870,6 +1924,14 @@ export default function App() {
         onRenderDebugChange={(patch) =>
           setRenderDebug((prev) => ({ ...prev, ...patch }))
         }
+      />
+      <div
+        className="app-shell__sidebar-resize"
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        data-dragging={isResizingSidebar ? "true" : "false"}
+        onPointerDown={onSidebarResizeStart}
       />
 
       <main className="workspace">
@@ -1994,6 +2056,7 @@ export default function App() {
                     orbitRef={orbitRef}
                     viewResetNonce={viewReset3dNonce}
                     boardColor={boardMaterialColor}
+                    scenePalette={scenePalette}
                     meshPreviewMode={meshPreviewMode}
                     renderDebug={renderDebug}
                   />
