@@ -74,7 +74,7 @@ High-volume stabilization and modernization day focused on mesh reliability, edi
 - **Discovery:** `public/robots.txt` and `public/sitemap.xml` pointing at `https://www.ripplestudio.app`.
 - **Runtime SEO:** `seo/siteUrl.ts` + `seo/documentSeo.ts` — per-route title/description/OG/Twitter/canonical updates for `/`, `/about`, `/contact`; app shell sets `/app` meta and syncs social titles when the board title changes. Optional `VITE_SITE_URL` in `.env.example`.
 - **Accessibility:** Marketing header logo `alt` text set to “Ripple Studio”.
-- Pushed to `origin/main` and redeployed Vercel production after verification.
+- Commit `0698899` pushed to `origin/main`; Vercel production redeployed after verification.
 
 ---
 
