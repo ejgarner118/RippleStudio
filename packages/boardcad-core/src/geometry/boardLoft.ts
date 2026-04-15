@@ -4,6 +4,19 @@ import {
   javaPointsToThreeYUp,
 } from "./boardSurfaceJava.js";
 
+function getOutlineXBounds(outlineXy: Float32Array): { minX: number; maxX: number } | null {
+  if (outlineXy.length < 2) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (let i = 0; i < outlineXy.length; i += 2) {
+    const x = outlineXy[i]!;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+  return { minX, maxX };
+}
+
 /**
  * Java-parity hull mesh (`BezierBoard.update3DModel` deck + bottom + mirror),
  * converted to Y-up Three.js coordinates (X length, Y vertical, Z lateral).
@@ -13,10 +26,9 @@ import {
  */
 export function buildLoftMesh3D(
   board: BezierBoard,
-  _outlineXy: Float32Array,
+  outlineXy: Float32Array,
   quality: "draft" | "standard" | "high" = "draft",
 ): { positions: Float32Array; indices: Uint32Array } | null {
-  void _outlineXy;
   if (board.crossSections.length < 2) return null;
 
   const steps =
@@ -26,9 +38,12 @@ export function buildLoftMesh3D(
         ? { lengthStepMm: 3, widthStepMm: 2.2 }
         : { lengthStepMm: 6, widthStepMm: 4 };
 
+  const bounds = getOutlineXBounds(outlineXy);
   const raw = buildJavaSurfaceMesh(board, {
     lengthStepMm: steps.lengthStepMm,
     widthStepMm: steps.widthStepMm,
+    xMinMm: bounds?.minX,
+    xMaxMm: bounds?.maxX,
   });
   if (!raw || raw.positions.length < 9) return null;
 

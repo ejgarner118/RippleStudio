@@ -39,4 +39,22 @@ describe("boardLoft", () => {
     const outline = sampleBezierSpline2D(brd.outline, 8);
     expect(buildLoftMesh3D(brd, outline)).toBeNull();
   });
+
+  it("preserves outline tail overhang in loft X span", () => {
+    const brd = new BezierBoard();
+    expect(loadBrdFromText(brd, BOARD_WITH_SECTIONS_BRD, "s.brd")).toBe(0);
+    const tail = brd.outline.getControlPointOrThrow(0);
+    tail.points[1]!.x = -90;
+    tail.points[2]!.x = -140;
+    tail.points[2]!.y = Math.max(tail.points[2]!.y, 70);
+    const outline = sampleBezierSpline2D(brd.outline, 120);
+    const mesh = buildLoftMesh3D(brd, outline);
+    expect(mesh).not.toBeNull();
+
+    let minX = Infinity;
+    for (let i = 0; i < mesh!.positions.length; i += 3) {
+      minX = Math.min(minX, mesh!.positions[i]!);
+    }
+    expect(minX).toBeLessThan(-40);
+  });
 });

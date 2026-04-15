@@ -125,9 +125,8 @@ export function getInterpolatedCrossSectionJava(
 ): BezierBoardCrossSection | null {
   const list = board.crossSections;
   if (list.length < 2) return null;
-  if (x < 0) return null;
   const len = getBoardLengthJava(board);
-  if (x > len) return null;
+  const xForSections = Math.max(0, Math.min(x, len));
 
   let index: number;
   let nextIndex: number;
@@ -135,9 +134,9 @@ export function getInterpolatedCrossSectionJava(
     index = 0;
     nextIndex = 1;
   } else {
-    index = getNearestCrossSectionIndexJava(board, x);
+    index = getNearestCrossSectionIndexJava(board, xForSections);
     if (index < 0) index = 1;
-    if (list[index]!.getPosition() > x) {
+    if (list[index]!.getPosition() > xForSections) {
       index -= 1;
     }
     nextIndex = index + 1;
@@ -153,7 +152,7 @@ export function getInterpolatedCrossSectionJava(
   const firstPos = list[index]!.getPosition();
   const secondPos = list[nextIndex]!.getPosition();
   const span = secondPos - firstPos;
-  let t = span !== 0 ? (x - firstPos) / span : 0;
+  let t = span !== 0 ? (xForSections - firstPos) / span : 0;
   if (!Number.isFinite(t)) t = 0;
   if (t < 0) t = 0;
   if (t > 1) t = 1;

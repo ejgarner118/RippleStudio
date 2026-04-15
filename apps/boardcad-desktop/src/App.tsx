@@ -361,7 +361,6 @@ export default function App() {
     onSelectTarget: (t) => {
       setSelectedControlPoint(t?.index ?? null);
       setSelectedControlPointKind(t?.point ?? "end");
-      setSelectedControlPointsMulti(t?.index != null ? [t.index] : []);
     },
     onHoverTarget: (t) => setHoveredTarget(t),
     selectedIndices: selectedControlPointsMulti,

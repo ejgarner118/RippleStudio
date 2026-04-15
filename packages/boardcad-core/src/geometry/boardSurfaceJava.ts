@@ -35,9 +35,6 @@ export function getPointAtJava(
   if (clampAlongLength) {
     if (x < SURFACE_X_CLAMP_LOW) x = SURFACE_X_CLAMP_LOW;
     if (x > len - SURFACE_X_CLAMP_LOW) x = len - SURFACE_X_CLAMP_LOW;
-  } else {
-    if (x < 0) x = 0;
-    if (x > len) x = len;
   }
 
   const cs = getInterpolatedCrossSectionJava(board, x);
@@ -85,9 +82,10 @@ export function getSurfacePointAngled(
   maxDeg: number,
   splitIndex: number,
   totalSplits: number,
+  clampAlongLength = true,
 ): Point3Java | null {
   const s = splitIndex / Math.max(totalSplits, 1);
-  return getPointAtJava(board, x, s, minDeg, maxDeg, true);
+  return getPointAtJava(board, x, s, minDeg, maxDeg, true, clampAlongLength);
 }
 
 export type SurfaceMeshJavaOptions = {
@@ -95,6 +93,9 @@ export type SurfaceMeshJavaOptions = {
   widthStepMm?: number;
   /** Segments around the perimeter for nose/tail end caps (watertight closure). */
   capSegments?: number;
+  /** Optional outline X extents to preserve tail/nose overhang beyond center endpoints. */
+  xMinMm?: number;
+  xMaxMm?: number;
 };
 
 function pushP(pos: number[], p: Point3Java): number {
@@ -262,7 +263,15 @@ export function buildJavaSurfaceMesh(
   const lengthAcc = opts.lengthStepMm ?? 1;
   const widthAcc = opts.widthStepMm ?? 1;
 
-  const length = getBoardLengthJava(board);
+  const baseLength = getBoardLengthJava(board);
+  const hasCustomBounds = Number.isFinite(opts.xMinMm) && Number.isFinite(opts.xMaxMm);
+  const minX = hasCustomBounds ? (opts.xMinMm as number) : SURFACE_X_CLAMP_LOW;
+  const maxX = hasCustomBounds
+    ? (opts.xMaxMm as number)
+    : Math.max(SURFACE_X_CLAMP_LOW, baseLength - SURFACE_X_CLAMP_LOW);
+  const lowX = Math.min(minX, maxX);
+  const highX = Math.max(minX, maxX);
+  const length = Math.max(highX - lowX, 1e-6);
   if (length < 1e-3) return null;
 
   const halfWidth = Math.max(getCenterHalfWidthJava(board), 1e-3);
@@ -281,20 +290,20 @@ export function buildJavaSurfaceMesh(
   const idx: number[] = [];
 
   for (let i = 0; i < deckSteps; i++) {
-    let xPos = 0;
+    let xPos = lowX;
     let v0: P;
     let v3: P;
     if (i === 0) {
-      v0 = getPointAtJava(board, xPos, 0, -360, 360, true) ?? { x: xPos, y: 0, z: 0 };
+      v0 = getPointAtJava(board, xPos, 0, -360, 360, true, false) ?? { x: xPos, y: 0, z: 0 };
     } else {
-      v0 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps) ?? {
+      v0 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false) ?? {
         x: xPos,
         y: 0,
         z: 0,
       };
     }
     v3 =
-      getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps) ?? {
+      getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false) ?? {
         x: xPos,
         y: 0,
         z: 0,
@@ -303,16 +312,16 @@ export function buildJavaSurfaceMesh(
     for (let j = 1; j <= lengthSteps; j++) {
       let v1: P;
       if (i === 0) {
-        v1 = getPointAtJava(board, xPos, 0, -360, 360, true) ?? { x: xPos, y: 0, z: 0 };
+        v1 = getPointAtJava(board, xPos, 0, -360, 360, true, false) ?? { x: xPos, y: 0, z: 0 };
       } else {
-        v1 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps) ?? {
+        v1 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false) ?? {
           x: xPos,
           y: 0,
           z: 0,
         };
       }
       const v2 =
-        getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps) ?? {
+        getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false) ?? {
           x: xPos,
           y: 0,
           z: 0,
@@ -325,27 +334,27 @@ export function buildJavaSurfaceMesh(
   }
 
   for (let i = 0; i < bottomSteps; i++) {
-    let xPos = 0;
-    let v0 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps) ?? {
+    let xPos = lowX;
+    let v0 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false) ?? {
       x: xPos,
       y: 0,
       z: 0,
     };
     let v3 =
-      getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps) ?? {
+      getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false) ?? {
         x: xPos,
         y: 0,
         z: 0,
       };
     xPos += lengthStep;
     for (let j = 1; j <= lengthSteps; j++) {
-      const v1 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps) ?? {
+      const v1 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false) ?? {
         x: xPos,
         y: 0,
         z: 0,
       };
       const v2 =
-        getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps) ?? {
+        getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false) ?? {
           x: xPos,
           y: 0,
           z: 0,
@@ -357,11 +366,11 @@ export function buildJavaSurfaceMesh(
     }
   }
 
-  const lowX = SURFACE_X_CLAMP_LOW;
-  const highX = Math.max(lowX, length - SURFACE_X_CLAMP_LOW);
+  const capLowX = lowX;
+  const capHighX = highX;
   const noseRing = halfHullRingAtStripBoundary(
     board,
-    lowX,
+    capLowX,
     deckSteps,
     bottomSteps,
     deckMin,
@@ -371,7 +380,7 @@ export function buildJavaSurfaceMesh(
   );
   const tailRing = halfHullRingAtStripBoundary(
     board,
-    highX,
+    capHighX,
     deckSteps,
     bottomSteps,
     deckMin,
