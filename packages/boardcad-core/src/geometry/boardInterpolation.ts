@@ -8,6 +8,8 @@ import { splineGetValueAt } from "./bezierSplineGeom.js";
 const MIN_INTERP_TARGET_MM = 0.01;
 const TAIL_EXTRAP_REF_MM = 40;
 const TAIL_EXTRAP_MAX_SCALE = 2.4;
+const TAIL_MIN_WIDTH_RATIO = 0.12;
+const TAIL_MIN_THICKNESS_RATIO = 0.2;
 
 export function getBoardLengthJava(board: BezierBoard): number {
   let maxX = 0;
@@ -181,6 +183,8 @@ export function getInterpolatedCrossSectionJava(
     const maxThickness = Math.max(refThickness * TAIL_EXTRAP_MAX_SCALE, MIN_INTERP_TARGET_MM);
     width = Math.min(maxWidth, width + widthSlope * tailDx);
     thickness = Math.min(maxThickness, thickness + thicknessSlope * tailDx);
+    width = Math.max(width, refWidth * TAIL_MIN_WIDTH_RATIO);
+    thickness = Math.max(thickness, refThickness * TAIL_MIN_THICKNESS_RATIO);
   }
   if (thickness < MIN_INTERP_TARGET_MM) thickness = MIN_INTERP_TARGET_MM;
   if (width < MIN_INTERP_TARGET_MM) width = MIN_INTERP_TARGET_MM;

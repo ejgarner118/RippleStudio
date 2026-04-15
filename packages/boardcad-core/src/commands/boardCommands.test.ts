@@ -189,6 +189,17 @@ describe("boardCommands", () => {
     expect(board.outline.getControlPointOrThrow(noseIdx).getTangentToPrev().x).toBeLessThanOrEqual(noseX);
   });
 
+  it("tail overhang tangent persists across stabilize calls", () => {
+    const board = new BezierBoard();
+    expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "tail-persist.brd")).toBe(0);
+    const tail = board.outline.getControlPointOrThrow(0);
+    const anchorX = tail.getEndPoint().x;
+    tail.getTangentToNext().x = anchorX - 55;
+    stabilizeEditTargetSpline(board, { kind: "outline", index: 0 });
+    stabilizeEditTargetSpline(board, { kind: "outline", index: 0 });
+    expect(board.outline.getControlPointOrThrow(0).getTangentToNext().x).toBeLessThan(anchorX - 40);
+  });
+
   it("RefineCrossSectionRailCommand undo restores section spline", () => {
     const board = new BezierBoard();
     expect(loadBrdFromText(board, BOARD_WITH_SECTIONS_BRD, "rail-ref.brd")).toBe(0);

@@ -84,4 +84,26 @@ describe("boardLoft", () => {
     expect(nearTailVerts).toBeGreaterThan(10);
     expect(mesh!.indices.length).toBeGreaterThan(0);
   });
+
+  it("tail overhang retains minimum lateral spread at cap", () => {
+    const brd = new BezierBoard();
+    expect(loadBrdFromText(brd, BOARD_WITH_SECTIONS_BRD, "tail-spread.brd")).toBe(0);
+    const tail = brd.outline.getControlPointOrThrow(0);
+    tail.points[1]!.x = -110;
+    tail.points[2]!.x = -170;
+    tail.points[2]!.y = Math.max(tail.points[2]!.y, 90);
+    const outline = sampleBezierSpline2D(brd.outline, 140);
+    const mesh = buildLoftMesh3D(brd, outline)!;
+
+    let minX = Infinity;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      minX = Math.min(minX, mesh.positions[i]!);
+    }
+    const nearTailY: number[] = [];
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      if (Math.abs(mesh.positions[i]! - minX) < 0.08) nearTailY.push(mesh.positions[i + 2]!);
+    }
+    expect(nearTailY.length).toBeGreaterThan(10);
+    expect(Math.max(...nearTailY) - Math.min(...nearTailY)).toBeGreaterThan(8);
+  });
 });

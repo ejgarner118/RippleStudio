@@ -3,7 +3,9 @@ import {
   getBoardLengthJava,
   getCenterHalfWidthJava,
   getInterpolatedCrossSectionJava,
+  getThicknessAtPosJava,
   getRockerAtPosJava,
+  getWidthAtPosJava,
 } from "./boardInterpolation.js";
 import {
   BS_ONE,
@@ -13,6 +15,10 @@ import {
 import { splineGetPointByS, splineGetSByNormalReverse } from "./bezierSplineGeom.js";
 
 const DEG_TO_RAD = Math.PI / 180;
+const MIN_TAIL_PATCH_HALF_WIDTH_MM = 6;
+const MIN_TAIL_PATCH_THICKNESS_MM = 4;
+const TAIL_PATCH_SCAN_STEP_MM = 2;
+const TAIL_PATCH_MAX_SCAN_MM = 140;
 
 export type Point3Java = { x: number; y: number; z: number };
 
@@ -168,6 +174,51 @@ function dedupeRingPoints(ring: Point3Java[], epsSq = 1e-10): Point3Java[] {
   return out;
 }
 
+function ensureTailRingSpread(
+  ring: Point3Java[],
+  minHalfWidth = MIN_TAIL_PATCH_HALF_WIDTH_MM,
+  minThickness = MIN_TAIL_PATCH_THICKNESS_MM,
+): Point3Java[] {
+  if (ring.length < 3) return ring;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const p of ring) {
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+    minZ = Math.min(minZ, p.z);
+    maxZ = Math.max(maxZ, p.z);
+  }
+  const halfWidth = Math.max(Math.abs(minY), Math.abs(maxY));
+  const thickness = maxZ - minZ;
+  const yScale = halfWidth >= minHalfWidth ? 1 : minHalfWidth / Math.max(halfWidth, 1e-6);
+  const zScale = thickness >= minThickness ? 1 : minThickness / Math.max(thickness, 1e-6);
+  if (yScale <= 1 && zScale <= 1) return ring;
+  const zMid = (minZ + maxZ) * 0.5;
+  return ring.map((p) => ({
+    x: p.x,
+    y: p.y * yScale,
+    z: zMid + (p.z - zMid) * zScale,
+  }));
+}
+
+function chooseTailTrimX(board: BezierBoard, lowX: number, highX: number): number {
+  const len = getBoardLengthJava(board);
+  const maxScanX = Math.min(highX, Math.min(len, lowX + TAIL_PATCH_MAX_SCAN_MM));
+  let x = lowX;
+  while (x <= maxScanX) {
+    const evalX = Math.max(0, Math.min(x, len));
+    const width = getWidthAtPosJava(board, evalX);
+    const thickness = getThicknessAtPosJava(board, evalX);
+    if (width >= MIN_TAIL_PATCH_HALF_WIDTH_MM * 2 && thickness >= MIN_TAIL_PATCH_THICKNESS_MM) {
+      return x;
+    }
+    x += TAIL_PATCH_SCAN_STEP_MM;
+  }
+  return Math.min(highX, Math.max(lowX, lowX + 40));
+}
+
 /**
  * Half-hull perimeter at station `x` (y ≥ 0 side) using the **same** angular splits as
  * deck/bottom strips. This matches the strip boundary so end caps seal without a visible
@@ -182,6 +233,7 @@ function halfHullRingAtStripBoundary(
   deckMax: number,
   bottomMin: number,
   bottomMax: number,
+  dedupe = true,
 ): Point3Java[] {
   const ring: Point3Java[] = [];
   const capX = x;
@@ -198,7 +250,7 @@ function halfHullRingAtStripBoundary(
     const p = getSurfacePointAngled(board, x, bottomMin, bottomMax, k, bottomSteps, false);
     if (p) ring.push({ ...p, x: capX });
   }
-  return dedupeRingPoints(ring);
+  return dedupe ? dedupeRingPoints(ring) : ring;
 }
 
 function normalX(a: Point3Java, b: Point3Java, c: Point3Java): number {
@@ -252,6 +304,24 @@ function appendEndCapFromRing(
   }
 }
 
+function appendRingBridge(
+  pos: number[],
+  idx: number[],
+  fromRing: Point3Java[],
+  toRing: Point3Java[],
+): void {
+  const n = Math.min(fromRing.length, toRing.length);
+  if (n < 2) return;
+  for (let i = 0; i < n; i++) {
+    const ni = (i + 1) % n;
+    const v0 = fromRing[i]!;
+    const v1 = fromRing[ni]!;
+    const v2 = toRing[ni]!;
+    const v3 = toRing[i]!;
+    emitQuad(pos, idx, v0, v1, v2, v3);
+  }
+}
+
 /**
  * Java `BezierBoard.update3DModel` deck + bottom strips (quad topology), then mirror Y.
  * Positions in Java coords: X length, Y lateral, Z vertical.
@@ -271,61 +341,46 @@ export function buildJavaSurfaceMesh(
     : Math.max(SURFACE_X_CLAMP_LOW, baseLength - SURFACE_X_CLAMP_LOW);
   const lowX = Math.min(minX, maxX);
   const highX = Math.max(minX, maxX);
-  const length = Math.max(highX - lowX, 1e-6);
-  if (length < 1e-3) return null;
-
   const halfWidth = Math.max(getCenterHalfWidthJava(board), 1e-3);
-  const lengthSteps = Math.max(2, Math.min(400, Math.floor(length / lengthAcc) + 1));
   const deckSteps = Math.max(2, Math.min(200, Math.floor(halfWidth / widthAcc) + 1));
   const bottomSteps = Math.max(2, Math.min(200, Math.floor(halfWidth / widthAcc) + 1));
-  const lengthStep = length / lengthSteps;
 
   const deckMin = -45;
   const deckMax = 45;
   const bottomMin = 45;
   const bottomMax = 360;
 
-  type P = Point3Java;
   const pos: number[] = [];
   const idx: number[] = [];
+  const tailTrimX = chooseTailTrimX(board, lowX, highX);
+  const bodyLowX = Math.max(lowX, Math.min(tailTrimX, highX));
+  const bodyLength = Math.max(highX - bodyLowX, 1e-6);
+  const lengthSteps = Math.max(2, Math.min(400, Math.floor(bodyLength / lengthAcc) + 1));
+  const lengthStep = bodyLength / lengthSteps;
 
   for (let i = 0; i < deckSteps; i++) {
-    let xPos = lowX;
-    let v0: P;
-    let v3: P;
+    let xPos = bodyLowX;
+    let v0 =
+      i === 0
+        ? getPointAtJava(board, xPos, 0, -360, 360, true, false)
+        : getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false);
+    let v3 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false);
+    if (!v0 || !v3) continue;
     if (i === 0) {
-      v0 = getPointAtJava(board, xPos, 0, -360, 360, true, false) ?? { x: xPos, y: 0, z: 0 };
-    } else {
-      v0 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false) ?? {
-        x: xPos,
-        y: 0,
-        z: 0,
-      };
+      v0 = { ...v0, x: xPos };
     }
-    v3 =
-      getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false) ?? {
-        x: xPos,
-        y: 0,
-        z: 0,
-      };
+    v3 = { ...v3, x: xPos };
     xPos += lengthStep;
     for (let j = 1; j <= lengthSteps; j++) {
-      let v1: P;
-      if (i === 0) {
-        v1 = getPointAtJava(board, xPos, 0, -360, 360, true, false) ?? { x: xPos, y: 0, z: 0 };
-      } else {
-        v1 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false) ?? {
-          x: xPos,
-          y: 0,
-          z: 0,
-        };
-      }
-      const v2 =
-        getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false) ?? {
-          x: xPos,
-          y: 0,
-          z: 0,
-        };
+      let v1 =
+        i === 0
+          ? getPointAtJava(board, xPos, 0, -360, 360, true, false)
+          : getSurfacePointAngled(board, xPos, deckMin, deckMax, i, deckSteps, false);
+      let v2 = getSurfacePointAngled(board, xPos, deckMin, deckMax, i + 1, deckSteps, false);
+      if (!v1) v1 = { ...v0, x: xPos };
+      if (!v2) v2 = { ...v3, x: xPos };
+      v1 = { ...v1, x: xPos };
+      v2 = { ...v2, x: xPos };
       emitQuad(pos, idx, v0, v1, v2, v3);
       v0 = v1;
       v3 = v2;
@@ -334,31 +389,20 @@ export function buildJavaSurfaceMesh(
   }
 
   for (let i = 0; i < bottomSteps; i++) {
-    let xPos = lowX;
-    let v0 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false) ?? {
-      x: xPos,
-      y: 0,
-      z: 0,
-    };
-    let v3 =
-      getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false) ?? {
-        x: xPos,
-        y: 0,
-        z: 0,
-      };
+    let xPos = bodyLowX;
+    let v0 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false);
+    let v3 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false);
+    if (!v0 || !v3) continue;
+    v0 = { ...v0, x: xPos };
+    v3 = { ...v3, x: xPos };
     xPos += lengthStep;
     for (let j = 1; j <= lengthSteps; j++) {
-      const v1 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false) ?? {
-        x: xPos,
-        y: 0,
-        z: 0,
-      };
-      const v2 =
-        getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false) ?? {
-          x: xPos,
-          y: 0,
-          z: 0,
-        };
+      let v1 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i, bottomSteps, false);
+      let v2 = getSurfacePointAngled(board, xPos, bottomMin, bottomMax, i + 1, bottomSteps, false);
+      if (!v1) v1 = { ...v0, x: xPos };
+      if (!v2) v2 = { ...v3, x: xPos };
+      v1 = { ...v1, x: xPos };
+      v2 = { ...v2, x: xPos };
       emitQuad(pos, idx, v0, v1, v2, v3);
       v0 = v1;
       v3 = v2;
@@ -366,11 +410,34 @@ export function buildJavaSurfaceMesh(
     }
   }
 
-  const capLowX = lowX;
-  const capHighX = highX;
+  const tailCapRingRaw = halfHullRingAtStripBoundary(
+    board,
+    lowX,
+    deckSteps,
+    bottomSteps,
+    deckMin,
+    deckMax,
+    bottomMin,
+    bottomMax,
+    false,
+  );
+  const tailCapRing = dedupeRingPoints(ensureTailRingSpread(tailCapRingRaw));
+  const tailBodyRing = dedupeRingPoints(
+    halfHullRingAtStripBoundary(
+      board,
+      bodyLowX,
+      deckSteps,
+      bottomSteps,
+      deckMin,
+      deckMax,
+      bottomMin,
+      bottomMax,
+      false,
+    ),
+  );
   const noseRing = halfHullRingAtStripBoundary(
     board,
-    capLowX,
+    highX,
     deckSteps,
     bottomSteps,
     deckMin,
@@ -378,18 +445,9 @@ export function buildJavaSurfaceMesh(
     bottomMin,
     bottomMax,
   );
-  const tailRing = halfHullRingAtStripBoundary(
-    board,
-    capHighX,
-    deckSteps,
-    bottomSteps,
-    deckMin,
-    deckMax,
-    bottomMin,
-    bottomMax,
-  );
-  appendEndCapFromRing(pos, idx, noseRing, false);
-  appendEndCapFromRing(pos, idx, tailRing, true);
+  appendRingBridge(pos, idx, tailCapRing, tailBodyRing);
+  appendEndCapFromRing(pos, idx, tailCapRing, false);
+  appendEndCapFromRing(pos, idx, noseRing, true);
 
   const positions = new Float32Array(pos);
   const indices = new Uint32Array(idx);

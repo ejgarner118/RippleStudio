@@ -100,4 +100,30 @@ describe("boardSurfaceJava", () => {
     const spread = Math.max(...nearTailXs) - Math.min(...nearTailXs);
     expect(spread).toBeLessThan(0.02);
   });
+
+  it("tail cap keeps non-singular spread at overhang station", () => {
+    const brd = new BezierBoard();
+    loadBrdFromText(brd, BOARD_WITH_SECTIONS_BRD, "tail-cap-spread.brd");
+    const mesh = buildJavaSurfaceMesh(brd, {
+      lengthStepMm: 4,
+      widthStepMm: 1.8,
+      xMinMm: -80,
+      xMaxMm: getBoardLengthJava(brd),
+    });
+    expect(mesh).not.toBeNull();
+    const tailYs: number[] = [];
+    const tailZs: number[] = [];
+    for (let i = 0; i < mesh!.positions.length; i += 3) {
+      const x = mesh!.positions[i]!;
+      if (Math.abs(x + 80) < 0.08) {
+        tailYs.push(mesh!.positions[i + 1]!);
+        tailZs.push(mesh!.positions[i + 2]!);
+      }
+    }
+    expect(tailYs.length).toBeGreaterThan(10);
+    expect(Math.max(...tailYs) - Math.min(...tailYs)).toBeGreaterThan(8);
+    expect(Math.max(...tailZs) - Math.min(...tailZs)).toBeGreaterThan(3);
+    const awayFromCenterline = tailYs.filter((y) => Math.abs(y) > 2).length;
+    expect(awayFromCenterline).toBeGreaterThan(6);
+  });
 });
