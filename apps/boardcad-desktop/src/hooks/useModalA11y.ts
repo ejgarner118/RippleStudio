@@ -85,6 +85,8 @@ export function useModalA11y({ open, onClose, initialFocusRef }: UseModalA11yOpt
     const changed: HTMLElement[] = [];
     for (const child of bodyChildren) {
       if (keep && keep.contains(child)) continue;
+      // If the modal is rendered inside #root, never inert the ancestor containing it.
+      if (child.contains(dialog)) continue;
       child.setAttribute("aria-hidden", "true");
       child.inert = true;
       changed.push(child);
