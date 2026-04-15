@@ -24,6 +24,15 @@ type UseModalA11yOpts = {
 export function useModalA11y({ open, onClose, initialFocusRef }: UseModalA11yOpts) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const inertedRef = useRef<HTMLElement[]>([]);
+
+  const clearInerted = () => {
+    for (const el of inertedRef.current) {
+      el.removeAttribute("aria-hidden");
+      el.inert = false;
+    }
+    inertedRef.current = [];
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +72,28 @@ export function useModalA11y({ open, onClose, initialFocusRef }: UseModalA11yOpt
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose, initialFocusRef]);
+
+  useEffect(() => {
+    if (!open) {
+      clearInerted();
+      return;
+    }
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const keep = dialog.closest(".modal-backdrop");
+    const bodyChildren = Array.from(document.body.children) as HTMLElement[];
+    const changed: HTMLElement[] = [];
+    for (const child of bodyChildren) {
+      if (keep && keep.contains(child)) continue;
+      child.setAttribute("aria-hidden", "true");
+      child.inert = true;
+      changed.push(child);
+    }
+    inertedRef.current = changed;
+    return () => {
+      clearInerted();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open) return;

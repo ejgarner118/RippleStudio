@@ -5,6 +5,7 @@ import {
   useEffect,
   useReducer,
   useRef,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -24,6 +25,16 @@ import {
   getBrdReadError,
   loadBrdFromBytes,
   renderPrintSvg,
+  sampleBoardMetrics,
+  compareBoardMetrics,
+  runBoardQaChecks,
+  AutoScaleBoardCommand,
+  exportBezierDxf,
+  exportNurbsStep,
+  exportIgesPlaceholder,
+  exportPdfSpecSheet,
+  previewToolpath,
+  postProcessGcode,
   saveBrdToString,
   addRecentFilePath,
   RemoveCrossSectionCommand,
@@ -34,6 +45,8 @@ import {
   MoveCrossSectionCommand,
   MoveControlPointsCommand,
   RefineCrossSectionRailCommand,
+  AdjustCrossSectionRailCommand,
+  computeRailDiagnostics,
   cloneCrossSection,
   setLocale,
   stabilizeEditTargetSpline,
@@ -69,9 +82,9 @@ import { useBoardCanvasEditing } from "./hooks/useBoardCanvasEditing";
 import { useCanvasWheelZoom } from "./hooks/useCanvasWheelZoom";
 import { useBoardGeometry } from "./hooks/useBoardGeometry";
 import { useDesktopSettings } from "./hooks/useDesktopSettings";
+import { useHotkeys } from "./hooks/useHotkeys";
 import { useWindowCloseGuard } from "./hooks/useWindowCloseGuard";
 import { confirmDiscardUnsaved } from "./lib/confirmDiscard";
-import { isTypingContext } from "./lib/keyboardGuards";
 import {
   formatFsError,
   hasRecentBoard,
@@ -83,6 +96,16 @@ import {
   writeBytesFromDialogPath,
   writeTextFromDialogPath,
 } from "./lib/fileIo";
+import {
+  addProjectSnapshot,
+  createProjectRecord,
+  getProjectById,
+  loadProjectLibrary,
+  updateProjectMetadata,
+  upsertProject,
+  type ProjectRecord,
+} from "./lib/projectLibrary";
+import { trackUxEvent } from "./lib/uxTelemetry";
 import { defaultOverlays, type OverlayState } from "./types/overlays";
 import {
   defaultReferenceImageLayer,
@@ -93,6 +116,18 @@ import {
 import type { BoardEditMode } from "./types/editMode";
 import { APP_WINDOW_TITLE_SUFFIX } from "./constants/brand";
 import "./App.css";
+
+type FinBox = {
+  x: number;
+  y: number;
+  cantDeg: number;
+  toeInDeg: number;
+};
+
+type FinLayout = {
+  template: "custom" | "fcs2_thruster" | "futures_thruster";
+  boxes: FinBox[];
+};
 
 const BoardScene3D = lazy(async () => {
   const m = await import("./board3d/BoardScene3D");
@@ -161,6 +196,12 @@ export default function App() {
   const [referenceImages, setReferenceImages] = useState<ReferenceImageState>(() =>
     defaultReferenceImageState(),
   );
+  const [projectLibrary, setProjectLibrary] = useState<ProjectRecord[]>(() => loadProjectLibrary());
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [lastAutosaveRevision, setLastAutosaveRevision] = useState<number | null>(null);
+  const [comparisonBaseline, setComparisonBaseline] = useState<BezierBoard | null>(null);
+  const [finLayout, setFinLayout] = useState<FinLayout>({ template: "custom", boxes: [] });
+  const [camPreviewSummary, setCamPreviewSummary] = useState<ReturnType<typeof previewToolpath> | null>(null);
   const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
   const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
 
@@ -173,6 +214,10 @@ export default function App() {
   useEffect(() => {
     setLocale("en");
   }, []);
+
+  useEffect(() => {
+    trackUxEvent("app.session.started", { theme: resolvedTheme });
+  }, [resolvedTheme]);
 
   useEffect(() => {
     const url = referenceImages.plan.objectUrl;
@@ -262,6 +307,29 @@ export default function App() {
     profileBounds,
     loftData,
   } = useBoardGeometry(brd, sectionIndex, overlays, boardRevision);
+  const analytics = sampleBoardMetrics(brd);
+  const comparisonDelta = comparisonBaseline ? compareBoardMetrics(brd, comparisonBaseline) : null;
+  const qaIssues = runBoardQaChecks(brd, {
+    minSections: 3,
+    minThicknessMm: 18,
+    minWidthMm: 110,
+  }).sort((a, b) => {
+    const rank: Record<string, number> = { error: 0, warn: 1, info: 2 };
+    return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+  });
+  const curvatureScore =
+    analytics.samples.reduce((acc, s) => acc + Math.abs(s.rocker - s.deck), 0) /
+    Math.max(1, analytics.samples.length);
+  const railDiag = brd.crossSections[sectionIndex]
+    ? computeRailDiagnostics(brd.crossSections[sectionIndex]!.getBezierSpline())
+    : null;
+  const railDiagnosticsText = railDiag
+    ? `Rail apex X ${railDiag.apexX.toFixed(1)} mm, apex Y ${railDiag.apexY.toFixed(1)} mm, tuck ${railDiag.tuckDepth.toFixed(1)} mm`
+    : "Rail diagnostics unavailable for current section.";
+  const activeProject = useMemo(
+    () => getProjectById(activeProjectId, projectLibrary),
+    [activeProjectId, projectLibrary],
+  );
 
   const canvasPtr = useBoardCanvasEditing({
     brd,
@@ -519,6 +587,7 @@ export default function App() {
     if (!picked) return;
     rememberRecentBoard(picked.path, picked.data);
     await loadBoardFromPath(picked.path);
+    trackUxEvent("file.open", { source: "picker" });
   }, [isDirty, loadBoardFromPath]);
 
   const openRecentPath = useCallback(
@@ -536,6 +605,7 @@ export default function App() {
   const newBoard = useCallback(async () => {
     if (isDirty && !(await confirmDiscardUnsaved())) return;
     setNewBoardOpen(true);
+    trackUxEvent("file.new.modal.opened");
   }, [isDirty]);
 
   const createNewBoardFromPreset = useCallback(
@@ -563,6 +633,7 @@ export default function App() {
         setNewBoardOpen(false);
         bumpBoardRevision();
         showToast("Blank board ready", "success");
+        trackUxEvent("board.created", { preset });
         return;
       }
 
@@ -630,6 +701,7 @@ export default function App() {
       setNewBoardOpen(false);
       bumpBoardRevision();
       showToast(guidedFromStandard ? "Guided setup started from Standard template" : `New ${preset} board`, "success");
+      trackUxEvent("board.created", { preset, guided: guidedFromStandard });
     },
     [stack, showToast, bumpCmdNonce, bumpBoardRevision],
   );
@@ -642,6 +714,7 @@ export default function App() {
         const p = await writeTextFromDialogPath(dest, body);
         setPath(p);
         setIsDirty(false);
+        setLastAutosaveRevision(boardRevision);
         pushRecent(p);
         showToast(`Saved ${p}`, "success");
         return true;
@@ -652,7 +725,7 @@ export default function App() {
         return false;
       }
     },
-    [brd, showToast, pushRecent],
+    [brd, showToast, pushRecent, boardRevision],
   );
 
   const saveBoard = useCallback(async () => {
@@ -663,6 +736,7 @@ export default function App() {
     }
     const dest = `${safeBoardFileBase(brd.name, "board")}.brd`;
     await saveBoardToPath(dest);
+    trackUxEvent("file.save", { mode: path ? "existing" : "new" });
   }, [brd.name, path, saveBoardToPath]);
 
   const saveBoardAs = useCallback(async () => {
@@ -674,17 +748,19 @@ export default function App() {
       if (!saved) return;
       setPath(saved.path);
       setIsDirty(false);
+      setLastAutosaveRevision(boardRevision);
       pushRecent(saved.path);
       showToast(
         saved.method === "picker" ? `Saved via file picker: ${saved.path}` : `Downloaded ${saved.path}`,
         "success",
       );
+      trackUxEvent("file.save_as", { method: saved.method });
     } catch (e) {
       const msg = formatFsError(e);
       setFileError(msg);
       showToast(msg, "error");
     }
-  }, [brd, pushRecent, showToast]);
+  }, [brd, pushRecent, showToast, boardRevision]);
 
   const meshExportBlockedMsg =
     "Could not export mesh (need at least two cross-sections and valid geometry).";
@@ -744,6 +820,14 @@ export default function App() {
         const dest = `${safeBoardFileBase(brd.name, slug)}.svg`;
         const p = await writeTextFromDialogPath(dest, svg);
         showToast(`Exported ${p}`, "success");
+        const dxf = exportBezierDxf("all", brd);
+        if (dxf.ok) await writeTextFromDialogPath(`${base}.dxf`, dxf.data);
+        const pdf = exportPdfSpecSheet(brd);
+        if (pdf.ok) await writeTextFromDialogPath(`${base}.pdf.svg`, pdf.data);
+        const step = exportNurbsStep(brd);
+        if (step.ok) await writeTextFromDialogPath(`${base}.step`, step.data);
+        const iges = exportIgesPlaceholder(brd);
+        if (iges.ok) await writeTextFromDialogPath(`${base}.iges`, iges.data);
       } catch (e) {
         const msg = formatFsError(e);
         setFileError(msg);
@@ -1303,86 +1387,212 @@ export default function App() {
 
   const modalOpen = aboutOpen || newBoardOpen || shortcutsOpen || brdHelpOpen || exportOpen;
 
+  const setComparisonAsCurrent = useCallback(() => {
+    // Use BRD round-trip text to keep this lightweight and consistent.
+    const body = saveBrdToString(brd);
+    const next = new BezierBoard();
+    const bytes = new TextEncoder().encode(body);
+    loadBrdFromBytes(next, bytes, "baseline://current");
+    setComparisonBaseline(next);
+    showToast("Comparison baseline set from current board", "success");
+  }, [brd, showToast]);
+
+  const applyAutoScale = useCallback(
+    (v: {
+      lengthScale: number;
+      widthScale: number;
+      thicknessScale: number;
+      lockTailWidth: boolean;
+      lockNoseRocker: boolean;
+      lockTailRocker: boolean;
+    }) => {
+      const beforeLength = getBoardLengthJava(brd);
+      if (
+        !Number.isFinite(v.lengthScale) ||
+        !Number.isFinite(v.widthScale) ||
+        !Number.isFinite(v.thicknessScale) ||
+        v.lengthScale <= 0 ||
+        v.widthScale <= 0 ||
+        v.thicknessScale <= 0
+      ) {
+        showToast("Scale factors must be positive numbers.", "error");
+        return;
+      }
+      stack.push(
+        new AutoScaleBoardCommand(brd, {
+          lengthScale: v.lengthScale,
+          widthScale: v.widthScale,
+          thicknessScale: v.thicknessScale,
+          locks: {
+            lockTailWidth: v.lockTailWidth,
+            lockNoseRocker: v.lockNoseRocker,
+            lockTailRocker: v.lockTailRocker,
+          },
+        }),
+      );
+      bumpCmdNonce();
+      setIsDirty(true);
+      bumpBoardRevision();
+      const afterLength = getBoardLengthJava(brd);
+      showToast(
+        `Auto scaling applied (${beforeLength.toFixed(1)} -> ${afterLength.toFixed(1)} mm length)`,
+        "success",
+      );
+      trackUxEvent("board.autoscale.applied", {
+        length: v.lengthScale,
+        width: v.widthScale,
+        thickness: v.thicknessScale,
+        lockTailWidth: v.lockTailWidth,
+        lockNoseRocker: v.lockNoseRocker,
+        lockTailRocker: v.lockTailRocker,
+      });
+    },
+    [brd, stack, showToast],
+  );
+
+  const createProject = useCallback((name: string) => {
+    const created = createProjectRecord(name || brd.name || "Untitled project");
+    const next = upsertProject(created);
+    setProjectLibrary(next);
+    setActiveProjectId(created.id);
+  }, [brd.name]);
+
+  const attachCurrentBoardToProject = useCallback((projectId: string) => {
+    setActiveProjectId(projectId);
+    const next = addProjectSnapshot(
+      projectId,
+      brd.name ? `${brd.name} (attached)` : "Attached board",
+      saveBrdToString(brd),
+    );
+    setProjectLibrary(next);
+    showToast("Board attached to project library", "success");
+  }, [brd, showToast]);
+
+  const createProjectSnapshot = useCallback((title: string) => {
+    if (!activeProjectId) {
+      showToast("Select a project before saving a snapshot.", "error");
+      return;
+    }
+    const next = addProjectSnapshot(activeProjectId, title || brd.name || "Snapshot", saveBrdToString(brd));
+    setProjectLibrary(next);
+    setLastAutosaveRevision(boardRevision);
+    showToast("Snapshot saved", "success");
+  }, [activeProjectId, brd, boardRevision, showToast]);
+
+  const patchActiveProjectMetadata = useCallback((patch: {
+    rider?: string;
+    waveType?: string;
+    autosaveEnabled?: boolean;
+    autosaveIntervalSec?: number;
+  }) => {
+    if (!activeProjectId) return;
+    const next = updateProjectMetadata(activeProjectId, patch);
+    setProjectLibrary(next);
+  }, [activeProjectId]);
+
+  const applyFinTemplate = useCallback((templateId: "fcs2_thruster" | "futures_thruster") => {
+    const len = Math.max(100, analytics.length);
+    const rearOffset = templateId === "fcs2_thruster" ? 460 : 445;
+    const centerOffset = 165;
+    const baseY = templateId === "fcs2_thruster" ? 55 : 58;
+    const sideX = Math.max(40, len - rearOffset);
+    const centerX = Math.max(30, len - centerOffset);
+    setFinLayout({
+      template: templateId,
+      boxes: [
+        { x: sideX, y: baseY, cantDeg: 6, toeInDeg: 2.5 },
+        { x: sideX, y: -baseY, cantDeg: 6, toeInDeg: 2.5 },
+        { x: centerX, y: 0, cantDeg: 0, toeInDeg: 0 },
+      ],
+    });
+    showToast(`Applied ${templateId === "fcs2_thruster" ? "FCS II" : "Futures"} fin template`, "success");
+  }, [showToast, analytics.length]);
+
+  const mirrorFinLayout = useCallback(() => {
+    setFinLayout((prev) => ({
+      ...prev,
+      boxes: prev.boxes.map((b) => ({ ...b, y: -b.y })),
+    }));
+    showToast("Mirrored fin layout", "success");
+  }, [showToast]);
+
+  const applyFinAngles = useCallback((cantDeg: number, toeInDeg: number) => {
+    setFinLayout((prev) => ({
+      ...prev,
+      boxes: prev.boxes.map((b) => ({ ...b, cantDeg, toeInDeg })),
+    }));
+    showToast("Applied cant/toe-in angles to all fin boxes", "success");
+  }, [showToast]);
+
+  const applyRailApexTuck = useCallback((apexShiftRatio: number, tuckDepthRatio: number) => {
+    const cs = brd.crossSections[sectionIndex];
+    if (!cs) {
+      showToast("Select a valid cross-section first.", "error");
+      return;
+    }
+    stack.push(new AdjustCrossSectionRailCommand(brd, sectionIndex, apexShiftRatio, tuckDepthRatio));
+    bumpCmdNonce();
+    setIsDirty(true);
+    bumpBoardRevision();
+    showToast("Rail apex/tuck adjustment applied", "success");
+  }, [brd, sectionIndex, stack, showToast]);
+
+  const generateCamPreview = useCallback(() => {
+    const len = Math.max(1, analytics.length);
+    const points = Array.from({ length: 60 }, (_, i) => {
+      const t = i / 59;
+      const x = t * len;
+      const z = analytics.samples[Math.min(analytics.samples.length - 1, Math.floor(t * (analytics.samples.length - 1)))]?.rocker ?? 0;
+      return { x, y: 0, z, feed: 2200, rapid: i === 0 };
+    });
+    const preview = previewToolpath(points);
+    setCamPreviewSummary(preview);
+    const gcode = postProcessGcode(points, { id: "generic_3axis", spindleOn: "M3 S12000", spindleOff: "M5" });
+    void writeTextFromDialogPath(`${safeBoardFileBase(brd.name, "board")}.nc`, gcode);
+    showToast("CAM preview generated and post-processed G-code downloaded", "success");
+    trackUxEvent("cam.preview.generated", { points: points.length, warnings: preview.warnings.length });
+  }, [analytics, brd.name, showToast]);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing) return;
-      if (isTypingContext(e.target)) return;
-      if (modalOpen) return;
-      const k = e.key.toLowerCase();
-      if (!e.ctrlKey && !e.metaKey && e.repeat) {
-        if (k === "a" || k === "c" || k === "d" || k === "i") return;
-        if (e.key === "Delete" || e.key === "Backspace") return;
-      }
-      if (e.altKey && !e.ctrlKey && !e.metaKey && k === "e") {
-        e.preventDefault();
-        setExportOpen(true);
-        return;
-      }
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && k === "a") {
-        e.preventDefault();
-        addControlPoint();
-        return;
-      }
-      if (!e.ctrlKey && !e.metaKey && (e.key === "Delete" || e.key === "Backspace")) {
-        e.preventDefault();
-        removeControlPoint();
-        return;
-      }
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && k === "c") {
-        e.preventDefault();
-        toggleContinuity();
-        return;
-      }
-      if (!e.ctrlKey && !e.metaKey && e.shiftKey && k === "d") {
-        e.preventDefault();
-        duplicateSection();
-        return;
-      }
-      if (!e.ctrlKey && !e.metaKey && e.shiftKey && k === "i") {
-        e.preventDefault();
-        interpolateSection();
-        return;
-      }
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      if (k === "o") {
-        e.preventDefault();
-        void openBoard();
-      }
-      if (k === "s" && !e.shiftKey) {
-        e.preventDefault();
-        void saveBoard();
-      }
-      if (k === "s" && e.shiftKey) {
-        e.preventDefault();
-        void saveBoardAs();
-      }
-      if (k === "z" && !e.shiftKey) {
-        e.preventDefault();
-        if (stack.canUndo()) doUndo();
-      }
-      if (k === "y" || (k === "z" && e.shiftKey)) {
-        e.preventDefault();
-        if (stack.canRedo()) doRedo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    if (!isDirty || !activeProjectId || !activeProject?.autosaveEnabled) return;
+    if (lastAutosaveRevision === boardRevision) return;
+    const intervalSec = Math.max(5, activeProject.autosaveIntervalSec ?? 30);
+    const timer = window.setInterval(() => {
+      if (lastAutosaveRevision === boardRevision) return;
+      const title = `Autosave ${new Date().toLocaleTimeString()}`;
+      const next = addProjectSnapshot(activeProjectId, title, saveBrdToString(brd));
+      const marked = updateProjectMetadata(activeProjectId, { lastAutosaveAt: Date.now() });
+      // marked already persisted; prefer it for state to include latest metadata.
+      setProjectLibrary(marked.length > 0 ? marked : next);
+      setLastAutosaveRevision(boardRevision);
+    }, intervalSec * 1000);
+    return () => window.clearInterval(timer);
   }, [
-    openBoard,
-    saveBoard,
-    saveBoardAs,
-    stack,
-    doUndo,
-    doRedo,
     isDirty,
-    addControlPoint,
-    removeControlPoint,
-    toggleContinuity,
-    duplicateSection,
-    interpolateSection,
-    modalOpen,
+    activeProjectId,
+    activeProject?.autosaveEnabled,
+    activeProject?.autosaveIntervalSec,
+    boardRevision,
+    lastAutosaveRevision,
+    brd,
   ]);
+
+  useHotkeys({
+    modalOpen,
+    onOpenExport: () => setExportOpen(true),
+    onAddControlPoint: addControlPoint,
+    onRemoveControlPoint: removeControlPoint,
+    onToggleContinuity: toggleContinuity,
+    onDuplicateSection: duplicateSection,
+    onInterpolateSection: interpolateSection,
+    onOpenBoard: openBoard,
+    onSaveBoard: saveBoard,
+    onSaveBoardAs: saveBoardAs,
+    canUndo: () => stack.canUndo(),
+    canRedo: () => stack.canRedo(),
+    onUndo: doUndo,
+    onRedo: doRedo,
+  });
 
   const handleCanvasKeyPanZoom = useCallback(
     (
@@ -1542,6 +1752,28 @@ export default function App() {
         onAddPairedProfilePoint={addPairedProfilePoint}
         onMetadataChange={updateMetadata}
         onUnitsChange={setCurrentUnits}
+        comparisonDelta={comparisonDelta}
+        analytics={analytics}
+        onSetComparisonBaseline={setComparisonAsCurrent}
+        onClearComparisonBaseline={() => setComparisonBaseline(null)}
+        onApplyAutoScale={applyAutoScale}
+        projectLibrary={projectLibrary}
+        activeProjectId={activeProjectId}
+        activeProject={activeProject}
+        onCreateProject={createProject}
+        onAttachCurrentBoardToProject={attachCurrentBoardToProject}
+        onCreateSnapshot={createProjectSnapshot}
+        onProjectMetadataChange={patchActiveProjectMetadata}
+        qaIssues={qaIssues}
+        finLayoutSummary={`${finLayout.template}, ${finLayout.boxes.length} boxes`}
+        onApplyFinTemplate={applyFinTemplate}
+        onMirrorFinLayout={mirrorFinLayout}
+        onApplyFinAngles={applyFinAngles}
+        curvatureScore={curvatureScore}
+        railDiagnosticsText={railDiagnosticsText}
+        onApplyRailApexTuck={applyRailApexTuck}
+        camPreview={camPreviewSummary}
+        onGenerateCamPreview={generateCamPreview}
       />
 
       <main className="workspace">

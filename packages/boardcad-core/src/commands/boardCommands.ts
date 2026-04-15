@@ -1,10 +1,12 @@
 import type { BoardCommand } from "../undo/commandStack.js";
-import type { BezierBoard } from "../model/bezierBoard.js";
+import { BezierBoard } from "../model/bezierBoard.js";
 import { BezierBoardCrossSection } from "../model/bezierBoardCrossSection.js";
 import { BezierKnot } from "../model/bezierKnot.js";
 import type { HandleMode } from "../model/bezierKnot.js";
 import { BezierSpline } from "../model/bezierSpline.js";
 import { refineCrossSectionRail } from "../board/railRefine.js";
+import { applyAutoScale, cloneBoardInto, type AutoScaleInput } from "../analysis/autoScale.js";
+import { applyRailApexTuckAdjust } from "../board/railToolkit.js";
 
 export type SplineEditTarget =
   | { kind: "outline"; index: number; point?: "end" | "prev" | "next" }
@@ -208,7 +210,12 @@ function stabilizeSpline(targetKind: SplineTarget["kind"], sp: BezierSpline): vo
   if (targetKind !== "section") {
     enforceAnchorOrdering(sp);
   }
-  enforceTangentDirection(sp);
+  // Cross-sections need freer tangent direction while shaping rail curves.
+  // Forcing prev<=anchor<=next on section tangents can collapse one handle and
+  // make handle mode switching appear broken.
+  if (targetKind !== "section") {
+    enforceTangentDirection(sp);
+  }
   if (targetKind === "outline") {
     enforceHalfSpace(sp, -MAX_ABS_COORD, 0);
   }
@@ -519,6 +526,47 @@ export class RefineCrossSectionRailCommand implements BoardCommand {
   }
 }
 
+export class AdjustCrossSectionRailCommand implements BoardCommand {
+  readonly label = "Adjust rail apex/tuck";
+  private readonly before: SerializedKnot[];
+  private readonly after: SerializedKnot[];
+
+  constructor(
+    private readonly board: BezierBoard,
+    private readonly sectionIndex: number,
+    apexShiftRatio: number,
+    tuckDepthRatio: number,
+  ) {
+    const cs = board.crossSections[sectionIndex];
+    if (!cs) throw new Error("Invalid section index");
+    const sp = cs.getBezierSpline();
+    this.before = snapshotSpline(sp);
+    const temp = new BezierSpline();
+    applySplineSnapshot(
+      temp,
+      this.before.map((row) => ({ ...row, p: [...row.p] })),
+    );
+    applyRailApexTuckAdjust(temp, apexShiftRatio, tuckDepthRatio);
+    this.after = snapshotSpline(temp);
+  }
+
+  undo(): void {
+    const sp = this.board.crossSections[this.sectionIndex]?.getBezierSpline();
+    if (!sp) return;
+    applySplineSnapshot(sp, this.before);
+    stabilizeTargetSpline(this.board, { kind: "section", sectionIndex: this.sectionIndex });
+    this.board.setLocks();
+  }
+
+  redo(): void {
+    const sp = this.board.crossSections[this.sectionIndex]?.getBezierSpline();
+    if (!sp) return;
+    applySplineSnapshot(sp, this.after);
+    stabilizeTargetSpline(this.board, { kind: "section", sectionIndex: this.sectionIndex });
+    this.board.setLocks();
+  }
+}
+
 export class RemoveControlPointCommand implements BoardCommand {
   readonly label = "Remove control point";
 
@@ -684,6 +732,32 @@ export class ResetSplineToLineCommand implements BoardCommand {
     if (!sp) return;
     applySplineSnapshot(sp, this.after);
     stabilizeTargetSpline(this.board, this.target);
+  }
+}
+
+export class AutoScaleBoardCommand implements BoardCommand {
+  readonly label = "Auto-scale board";
+  private readonly before: BezierBoard;
+  private readonly after: BezierBoard;
+
+  constructor(private readonly board: BezierBoard, input: AutoScaleInput) {
+    this.before = new BezierBoard();
+    cloneBoardInto(this.before, board);
+    this.after = new BezierBoard();
+    cloneBoardInto(this.after, board);
+    applyAutoScale(this.after, input);
+  }
+
+  undo(): void {
+    cloneBoardInto(this.board, this.before);
+    this.board.checkAndFixContinousy(false, true);
+    this.board.setLocks();
+  }
+
+  redo(): void {
+    cloneBoardInto(this.board, this.after);
+    this.board.checkAndFixContinousy(false, true);
+    this.board.setLocks();
   }
 }
 

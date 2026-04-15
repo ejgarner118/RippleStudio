@@ -9,6 +9,13 @@ export type ShapebotConfig = {
   zMaxHeight: number;
 };
 
+export type ToolpathPoint = { x: number; y: number; z: number; feed: number; rapid?: boolean };
+export type ToolpathPreview = {
+  points: ToolpathPoint[];
+  bounds: { min: [number, number, number]; max: [number, number, number] };
+  warnings: string[];
+};
+
 export function parseShapebotProperties(text: string): ShapebotConfig {
   const lines = text.split(/\r?\n/);
   const map = new Map<string, string>();
@@ -42,4 +49,44 @@ export function generateGcodeDeckStub(_cfg: ShapebotConfig): string {
 
 export function generateGcodeBottomStub(_cfg: ShapebotConfig): string {
   return `${writeGcodeHeaderComment()}G21\nG90\n; bottom toolpath stub\n`;
+}
+
+export function previewToolpath(points: ToolpathPoint[]): ToolpathPreview {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const p of points) {
+    min[0] = Math.min(min[0], p.x);
+    min[1] = Math.min(min[1], p.y);
+    min[2] = Math.min(min[2], p.z);
+    max[0] = Math.max(max[0], p.x);
+    max[1] = Math.max(max[1], p.y);
+    max[2] = Math.max(max[2], p.z);
+  }
+  const warnings: string[] = [];
+  if (points.length < 2) warnings.push("Toolpath is too short to machine.");
+  if (min[2] < -250) warnings.push("Toolpath Z depth exceeds conservative safety threshold.");
+  if (max[2] > 500) warnings.push("Toolpath exceeds configured machine envelope in Z.");
+  return { points, bounds: { min, max }, warnings };
+}
+
+export type PostProcessorProfile = {
+  id: string;
+  spindleOn?: string;
+  spindleOff?: string;
+  rapidCode?: string;
+  linearCode?: string;
+};
+
+export function postProcessGcode(points: ToolpathPoint[], profile: PostProcessorProfile): string {
+  const rapidCode = profile.rapidCode ?? "G0";
+  const linearCode = profile.linearCode ?? "G1";
+  const lines: string[] = [writeGcodeHeaderComment(profile.id), "G21", "G90"];
+  if (profile.spindleOn) lines.push(profile.spindleOn);
+  for (const p of points) {
+    const code = p.rapid ? rapidCode : linearCode;
+    lines.push(`${code} X${p.x.toFixed(3)} Y${p.y.toFixed(3)} Z${p.z.toFixed(3)} F${Math.max(1, p.feed).toFixed(0)}`);
+  }
+  if (profile.spindleOff) lines.push(profile.spindleOff);
+  lines.push("M30");
+  return lines.join("\n") + "\n";
 }

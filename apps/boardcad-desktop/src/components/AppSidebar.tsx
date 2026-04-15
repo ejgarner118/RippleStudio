@@ -7,6 +7,9 @@ import type { BoardEditMode } from "../types/editMode";
 import type { ReferenceImageLayer, ReferenceImageState } from "../types/referenceImage";
 import { boardUnitsLabel } from "../lib/unitLabel";
 import { formatBoardCoordinate } from "../lib/unitDisplay";
+import type { BoardDeltaMetrics, BoardMetrics, QaIssue, ToolpathPreview } from "@boardcad/core";
+import type { ProjectRecord } from "../lib/projectLibrary";
+import { SegmentedControl } from "./ui/SegmentedControl";
 
 type AppSidebarProps = {
   brd: BezierBoard;
@@ -56,6 +59,37 @@ type AppSidebarProps = {
     patch: Partial<Pick<BezierBoard, "name" | "designer" | "comments" | "author">>,
   ) => void;
   onUnitsChange: (units: number) => void;
+  comparisonDelta: BoardDeltaMetrics | null;
+  analytics: BoardMetrics | null;
+  onSetComparisonBaseline: () => void;
+  onClearComparisonBaseline: () => void;
+  onApplyAutoScale: (v: {
+    lengthScale: number;
+    widthScale: number;
+    thicknessScale: number;
+    lockTailWidth: boolean;
+    lockNoseRocker: boolean;
+    lockTailRocker: boolean;
+  }) => void;
+  projectLibrary: ProjectRecord[];
+  activeProjectId: string | null;
+  activeProject: ProjectRecord | null;
+  onCreateProject: (name: string) => void;
+  onAttachCurrentBoardToProject: (projectId: string) => void;
+  onCreateSnapshot: (title: string) => void;
+  onProjectMetadataChange: (
+    patch: { rider?: string; waveType?: string; autosaveEnabled?: boolean; autosaveIntervalSec?: number },
+  ) => void;
+  qaIssues: QaIssue[];
+  finLayoutSummary: string;
+  onApplyFinTemplate: (templateId: "fcs2_thruster" | "futures_thruster") => void;
+  onMirrorFinLayout: () => void;
+  onApplyFinAngles: (cantDeg: number, toeInDeg: number) => void;
+  curvatureScore: number;
+  railDiagnosticsText: string;
+  onApplyRailApexTuck: (apexShiftRatio: number, tuckDepthRatio: number) => void;
+  camPreview: ToolpathPreview | null;
+  onGenerateCamPreview: () => void;
 };
 
 export function AppSidebar({
@@ -99,6 +133,28 @@ export function AppSidebar({
   onAddPairedProfilePoint,
   onMetadataChange,
   onUnitsChange,
+  comparisonDelta,
+  analytics,
+  onSetComparisonBaseline,
+  onClearComparisonBaseline,
+  onApplyAutoScale,
+  projectLibrary,
+  activeProjectId,
+  activeProject,
+  onCreateProject,
+  onAttachCurrentBoardToProject,
+  onCreateSnapshot,
+  onProjectMetadataChange,
+  qaIssues,
+  finLayoutSummary,
+  onApplyFinTemplate,
+  onMirrorFinLayout,
+  onApplyFinAngles,
+  curvatureScore,
+  railDiagnosticsText,
+  onApplyRailApexTuck,
+  camPreview,
+  onGenerateCamPreview,
 }: AppSidebarProps) {
   const cs = brd.crossSections[sectionIndex];
   const unitLabel = boardUnitsLabel(brd);
@@ -107,10 +163,43 @@ export function AppSidebar({
   const [maxThickness, setMaxThickness] = useState(4);
   const [maxThicknessPosPct, setMaxThicknessPosPct] = useState(50);
   const [coordDraft, setCoordDraft] = useState<{ x: string; y: string }>({ x: "", y: "" });
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [snapshotTitle, setSnapshotTitle] = useState("");
+  const [projectRiderDraft, setProjectRiderDraft] = useState("");
+  const [projectWaveDraft, setProjectWaveDraft] = useState("");
+  const [scaleDraft, setScaleDraft] = useState({
+    lengthScale: 1.08,
+    widthScale: 1.04,
+    thicknessScale: 1.03,
+    lockTailWidth: false,
+    lockNoseRocker: false,
+    lockTailRocker: false,
+  });
+  const [finCantDraft, setFinCantDraft] = useState(6);
+  const [finToeDraft, setFinToeDraft] = useState(2.5);
+  const [apexShiftDraft, setApexShiftDraft] = useState(0);
+  const [tuckDepthDraft, setTuckDepthDraft] = useState(0);
+  const [focusArea, setFocusArea] = useState<"create" | "inspect" | "project" | "manufacture" | "display">("create");
+  const [detailMode, setDetailMode] = useState<"basic" | "advanced">("basic");
+  const scaleHasInvalidValue =
+    !Number.isFinite(scaleDraft.lengthScale) ||
+    !Number.isFinite(scaleDraft.widthScale) ||
+    !Number.isFinite(scaleDraft.thicknessScale) ||
+    scaleDraft.lengthScale <= 0 ||
+    scaleDraft.widthScale <= 0 ||
+    scaleDraft.thicknessScale <= 0;
+  const qaErrorCount = qaIssues.filter((q) => q.severity === "error").length;
+  const qaWarnCount = qaIssues.filter((q) => q.severity === "warn").length;
+  const hasSectionSelected = Boolean(cs);
 
   useEffect(() => {
     setCoordDraft({ x: "", y: "" });
   }, [selectedControlPoint, selectedControlPointKind, editMode, sectionIndex]);
+
+  useEffect(() => {
+    setProjectRiderDraft(activeProject?.rider ?? "");
+    setProjectWaveDraft(activeProject?.waveType ?? "");
+  }, [activeProject?.id, activeProject?.rider, activeProject?.waveType]);
 
   const scrollToEdit = () => {
     const el = document.getElementById("sidebar-edit") as HTMLDetailsElement | null;
@@ -123,7 +212,40 @@ export function AppSidebar({
   return (
     <aside className="sidebar" aria-label="View options and board info">
       <div className="sidebar__scroll">
+        <div className="sidebar-ia-toolbar">
+          <SegmentedControl
+            ariaLabel="Workflow focus"
+            value={focusArea}
+            onChange={setFocusArea}
+            options={[
+              { id: "create", label: "Create" },
+              { id: "inspect", label: "Inspect" },
+              { id: "project", label: "Project" },
+              { id: "manufacture", label: "Output" },
+              { id: "display", label: "Display" },
+            ]}
+          />
+          <SegmentedControl
+            ariaLabel="Detail level"
+            value={detailMode}
+            onChange={setDetailMode}
+            options={[
+              { id: "basic", label: "Basic" },
+              { id: "advanced", label: "Advanced" },
+            ]}
+          />
+          <div className="sidebar-status-row" aria-live="polite">
+            <span className={`sidebar-status-badge ${qaErrorCount > 0 ? "sidebar-status-badge--error" : "sidebar-status-badge--ok"}`}>
+              QA {qaErrorCount > 0 ? `${qaErrorCount} errors` : "clear"}
+            </span>
+            <span className="sidebar-status-badge">
+              {activeProject?.autosaveEnabled ? "Autosave on" : "Autosave off"}
+            </span>
+            {qaWarnCount > 0 ? <span className="sidebar-status-badge">Warnings {qaWarnCount}</span> : null}
+          </div>
+        </div>
         <div className="sidebar__sticky-head">
+          {(focusArea === "create" || focusArea === "display") ? (
           <details className="sidebar-section" id="sidebar-edit" open>
             <summary className="sidebar-section__summary">Edit</summary>
             <div className="sidebar-section__body">
@@ -245,8 +367,397 @@ export function AppSidebar({
               </label>
             </div>
           </details>
+          ) : null}
         </div>
 
+        {focusArea === "project" ? (
+        <details className="sidebar-section">
+          <summary className="sidebar-section__summary">Project library</summary>
+          <div className="sidebar-section__body">
+            <p className="sidebar-hint">Persistent projects, milestones, and snapshot history.</p>
+            <p className="sidebar-hint">
+              {activeProject
+                ? `Active: ${activeProject.name} · ${activeProject.snapshots.length} snapshots`
+                : "No active project selected."}
+            </p>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">New project name</span>
+              <input
+                className="sidebar-field__input"
+                value={projectNameDraft}
+                onChange={(e) => setProjectNameDraft(e.target.value)}
+              />
+            </label>
+            <div className="sidebar-actions">
+              <button
+                type="button"
+                className="btn btn--sm btn--primary"
+                onClick={() => {
+                  onCreateProject(projectNameDraft);
+                  setProjectNameDraft("");
+                }}
+              >
+                Create project
+              </button>
+            </div>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Attach board to project</span>
+              <select
+                value={activeProjectId ?? ""}
+                onChange={(e) => {
+                  if (e.target.value) onAttachCurrentBoardToProject(e.target.value);
+                }}
+              >
+                <option value="">Select project…</option>
+                {projectLibrary.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.snapshots.length} snapshots)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Snapshot title</span>
+              <input
+                className="sidebar-field__input"
+                value={snapshotTitle}
+                onChange={(e) => setSnapshotTitle(e.target.value)}
+                placeholder="e.g. Step-up v2 rails"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn--sm btn--subtle"
+              onClick={() => {
+                onCreateSnapshot(snapshotTitle);
+                setSnapshotTitle("");
+              }}
+              disabled={!activeProjectId}
+            >
+              Save snapshot
+            </button>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Rider</span>
+              <input
+                className="sidebar-field__input"
+                value={projectRiderDraft}
+                onChange={(e) => setProjectRiderDraft(e.target.value)}
+                onBlur={() => onProjectMetadataChange({ rider: projectRiderDraft })}
+                placeholder="Rider name"
+              />
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Wave type</span>
+              <input
+                className="sidebar-field__input"
+                value={projectWaveDraft}
+                onChange={(e) => setProjectWaveDraft(e.target.value)}
+                onBlur={() => onProjectMetadataChange({ waveType: projectWaveDraft })}
+                placeholder="Beach break, point, etc."
+              />
+            </label>
+            <div className="sidebar-actions">
+              <label className="chk">
+                <input
+                  type="checkbox"
+                  checked={activeProject?.autosaveEnabled ?? true}
+                  onChange={(e) => onProjectMetadataChange({ autosaveEnabled: e.target.checked })}
+                  disabled={!activeProject}
+                />
+                Autosave enabled
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={600}
+                step={5}
+                className="sidebar-field__input"
+                value={activeProject?.autosaveIntervalSec ?? 30}
+                disabled={!activeProject}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v)) onProjectMetadataChange({ autosaveIntervalSec: v });
+                }}
+                onBlur={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v)) onProjectMetadataChange({ autosaveIntervalSec: v });
+                }}
+                aria-label="Autosave interval seconds"
+              />
+            </div>
+            {activeProject?.lastAutosaveAt ? (
+              <p className="sidebar-hint">
+                Last autosave: {new Date(activeProject.lastAutosaveAt).toLocaleString()}
+              </p>
+            ) : null}
+          </div>
+        </details>
+        ) : null}
+
+        {(focusArea === "create" || (focusArea === "inspect" && detailMode === "advanced")) ? (
+        <details className="sidebar-section">
+          <summary className="sidebar-section__summary">Auto scaling</summary>
+          <div className="sidebar-section__body">
+            <p className="sidebar-hint">Scale with optional shape-preserving locks.</p>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Length scale</span>
+              <input
+                type="number"
+                step="0.01"
+                className="sidebar-field__input"
+                value={scaleDraft.lengthScale}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, lengthScale: Number(e.target.value) }))}
+              />
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Width scale</span>
+              <input
+                type="number"
+                step="0.01"
+                className="sidebar-field__input"
+                value={scaleDraft.widthScale}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, widthScale: Number(e.target.value) }))}
+              />
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Thickness scale</span>
+              <input
+                type="number"
+                step="0.01"
+                className="sidebar-field__input"
+                value={scaleDraft.thicknessScale}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, thicknessScale: Number(e.target.value) }))}
+              />
+            </label>
+            {scaleHasInvalidValue ? (
+              <p className="sidebar-hint sidebar-hint--error">
+                Scale values must be positive numbers greater than zero.
+              </p>
+            ) : (
+              <p className="sidebar-hint">Tip: Start with 1.01-1.05 for subtle, production-safe adjustments.</p>
+            )}
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={scaleDraft.lockTailWidth}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, lockTailWidth: e.target.checked }))}
+              />
+              Lock tail width
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={scaleDraft.lockNoseRocker}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, lockNoseRocker: e.target.checked }))}
+              />
+              Lock nose rocker
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={scaleDraft.lockTailRocker}
+                onChange={(e) => setScaleDraft((d) => ({ ...d, lockTailRocker: e.target.checked }))}
+              />
+              Lock tail rocker
+            </label>
+            <button
+              type="button"
+              className="btn btn--sm btn--primary"
+              onClick={() => onApplyAutoScale(scaleDraft)}
+              disabled={scaleHasInvalidValue}
+            >
+              Apply auto-scale
+            </button>
+          </div>
+        </details>
+        ) : null}
+
+        {focusArea === "inspect" ? (
+        <details className="sidebar-section">
+          <summary className="sidebar-section__summary">Compare and analytics</summary>
+          <div className="sidebar-section__body">
+            <div className="sidebar-actions">
+              <button type="button" className="btn btn--sm btn--primary" onClick={onSetComparisonBaseline}>
+                Set baseline
+              </button>
+              <button type="button" className="btn btn--sm btn--subtle" onClick={onClearComparisonBaseline}>
+                Clear baseline
+              </button>
+            </div>
+            {comparisonDelta ? (
+              <ul className="help-list">
+                <li>Length delta: {comparisonDelta.lengthDelta.toFixed(2)} mm</li>
+                <li>Max width delta: {comparisonDelta.maxWidthDelta.toFixed(2)} mm</li>
+                <li>Max thickness delta: {comparisonDelta.maxThicknessDelta.toFixed(2)} mm</li>
+                <li>Volume delta: {comparisonDelta.volumeDeltaLiters.toFixed(3)} L</li>
+              </ul>
+            ) : (
+              <p className="sidebar-hint">Set a baseline board to see ghost-style deltas.</p>
+            )}
+            {analytics ? (
+              <ul className="help-list">
+                <li>Approx volume: {analytics.approxVolumeLiters.toFixed(3)} L</li>
+                <li>Center of buoyancy: X {analytics.centerOfBuoyancyX.toFixed(1)} mm</li>
+                <li>Max width: {analytics.maxWidth.toFixed(1)} mm</li>
+                <li>Max thickness: {analytics.maxThickness.toFixed(1)} mm</li>
+              </ul>
+            ) : null}
+          </div>
+        </details>
+        ) : null}
+
+        {(focusArea === "create" || (focusArea === "inspect" && detailMode === "advanced")) ? (
+        <details className="sidebar-section">
+          <summary className="sidebar-section__summary">Rail, fins, curvature</summary>
+          <div className="sidebar-section__body">
+            <p className="sidebar-hint">Advanced rail and placement helpers.</p>
+            <p className="sidebar-hint">Curvature score: {curvatureScore.toFixed(3)}</p>
+            <p className="sidebar-hint">{railDiagnosticsText}</p>
+            <p className="sidebar-hint">Fin layout: {finLayoutSummary}</p>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Rail apex shift</span>
+              <input
+                type="number"
+                step="0.05"
+                min={-1}
+                max={1}
+                className="sidebar-field__input"
+                value={apexShiftDraft}
+                onChange={(e) => setApexShiftDraft(Number(e.target.value))}
+              />
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Rail tuck depth adjust</span>
+              <input
+                type="number"
+                step="0.05"
+                min={-1}
+                max={1}
+                className="sidebar-field__input"
+                value={tuckDepthDraft}
+                onChange={(e) => setTuckDepthDraft(Number(e.target.value))}
+              />
+            </label>
+            <div className="sidebar-actions">
+              <button
+                type="button"
+                className="btn btn--sm btn--primary"
+                onClick={() => onApplyRailApexTuck(apexShiftDraft, tuckDepthDraft)}
+                disabled={!hasSectionSelected}
+              >
+                Apply rail apex/tuck
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm btn--subtle"
+                onClick={() => {
+                  setApexShiftDraft(0);
+                  setTuckDepthDraft(0);
+                }}
+              >
+                Reset rail values
+              </button>
+            </div>
+            {!hasSectionSelected ? (
+              <p className="sidebar-hint sidebar-hint--error">
+                Select a cross-section first to edit rail apex/tuck.
+              </p>
+            ) : null}
+            <div className="sidebar-actions">
+              <button
+                type="button"
+                className="btn btn--sm btn--subtle"
+                onClick={() => onApplyFinTemplate("fcs2_thruster")}
+              >
+                FCS II thruster
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm btn--subtle"
+                onClick={() => onApplyFinTemplate("futures_thruster")}
+              >
+                Futures thruster
+              </button>
+              <button type="button" className="btn btn--sm btn--primary" onClick={onMirrorFinLayout}>
+                Mirror fins
+              </button>
+            </div>
+            <div className="sidebar-actions">
+              <input
+                type="number"
+                step="0.1"
+                className="sidebar-field__input"
+                value={finCantDraft}
+                onChange={(e) => setFinCantDraft(Number(e.target.value))}
+                aria-label="Fin cant angle"
+              />
+              <input
+                type="number"
+                step="0.1"
+                className="sidebar-field__input"
+                value={finToeDraft}
+                onChange={(e) => setFinToeDraft(Number(e.target.value))}
+                aria-label="Fin toe-in angle"
+              />
+              <button
+                type="button"
+                className="btn btn--sm btn--subtle"
+                onClick={() => onApplyFinAngles(finCantDraft, finToeDraft)}
+              >
+                Apply cant/toe-in
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm btn--subtle"
+                onClick={() => {
+                  setFinCantDraft(6);
+                  setFinToeDraft(2.5);
+                }}
+              >
+                Reset fin angles
+              </button>
+            </div>
+          </div>
+        </details>
+        ) : null}
+
+        {(focusArea === "manufacture" || focusArea === "inspect") ? (
+        <details className="sidebar-section">
+          <summary className="sidebar-section__summary">CAM preview and QA</summary>
+          <div className="sidebar-section__body">
+            <div className="sidebar-actions">
+              <button type="button" className="btn btn--sm btn--primary" onClick={onGenerateCamPreview}>
+                Generate CAM preview
+              </button>
+            </div>
+            {camPreview ? (
+              <ul className="help-list">
+                <li>Points: {camPreview.points.length}</li>
+                <li>
+                  Bounds X/Y/Z min: {camPreview.bounds.min.map((v) => v.toFixed(1)).join(", ")}
+                </li>
+                <li>
+                  Bounds X/Y/Z max: {camPreview.bounds.max.map((v) => v.toFixed(1)).join(", ")}
+                </li>
+              </ul>
+            ) : null}
+            {qaIssues.length > 0 ? (
+              <ul className="help-list">
+                {qaIssues.map((q) => (
+                  <li key={q.id}>
+                    <strong>[{q.severity.toUpperCase()}]</strong> {q.message}
+                    {q.hint ? <span> - {q.hint}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="sidebar-hint">No QA issues detected by rule checks.</p>
+            )}
+          </div>
+        </details>
+        ) : null}
+
+        {(focusArea === "display" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">View</summary>
           <div className="sidebar-section__body">
@@ -468,7 +979,9 @@ export function AppSidebar({
             </label>
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "display" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Profile view</summary>
           <div className="sidebar-section__body">
@@ -495,7 +1008,9 @@ export function AppSidebar({
             </label>
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "display" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">3D</summary>
           <div className="sidebar-section__body">
@@ -512,7 +1027,9 @@ export function AppSidebar({
             </label>
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "create" || detailMode === "advanced") ? (
         <details className="sidebar-section" open>
           <summary className="sidebar-section__summary">Sections</summary>
           <div className="sidebar-section__body">
@@ -604,7 +1121,9 @@ export function AppSidebar({
             )}
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "inspect" || focusArea === "manufacture") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Validate</summary>
           <div className="sidebar-section__body">
@@ -626,7 +1145,9 @@ export function AppSidebar({
             )}
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "create" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Profile shaping</summary>
           <div className="sidebar-section__body">
@@ -696,7 +1217,9 @@ export function AppSidebar({
             </div>
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "project" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Board settings</summary>
           <div className="sidebar-section__body">
@@ -739,7 +1262,9 @@ export function AppSidebar({
             </label>
           </div>
         </details>
+        ) : null}
 
+        {(focusArea === "project" || detailMode === "advanced") ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">File units</summary>
           <div className="sidebar-section__body">
@@ -761,6 +1286,7 @@ export function AppSidebar({
             </label>
           </div>
         </details>
+        ) : null}
 
         <div className="sidebar__footer-actions">
           <button type="button" className="btn btn--sm btn--subtle" onClick={scrollToEdit}>

@@ -286,6 +286,69 @@ select:focus:not(:focus-visible) {
   padding: var(--space-4);
 }
 
+.sidebar-ia-toolbar {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.sidebar-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.sidebar-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sidebar-status-badge--ok {
+  border-color: var(--state-success-border);
+  background: var(--state-success-bg);
+  color: var(--text-primary);
+}
+
+.sidebar-status-badge--error {
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
+  color: var(--text-primary);
+}
+
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
+}
+
+.segmented-control__btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented-control__btn--active {
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  color: var(--text-primary);
+}
+
 .sidebar__sticky-head {
   position: sticky;
   top: 0;
@@ -353,6 +416,10 @@ select:focus:not(:focus-visible) {
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+.sidebar-hint--error {
+  color: var(--state-danger-text, #9f1239);
 }
 
 .sidebar-hint code {
@@ -466,6 +533,20 @@ select:focus:not(:focus-visible) {
 .workspace-panels {
   flex: 1;
   min-height: 0;
+}
+
+.workspace-compact {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--space-2);
+}
+
+.workspace-compact__switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .workspace-panels__panel {
@@ -1078,6 +1159,10 @@ kbd {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
     max-height: 42vh;
+  }
+
+  .sidebar__scroll {
+    padding: var(--space-3);
   }
 
   .workspace {

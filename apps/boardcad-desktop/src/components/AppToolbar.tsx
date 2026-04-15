@@ -109,6 +109,25 @@ export function AppToolbar({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    const nav = menubarRef.current;
+    if (!nav) return;
+    const triggers = Array.from(nav.querySelectorAll<HTMLElement>("details.menu > summary.menu__trigger"));
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const target = e.target;
+      if (!(target instanceof HTMLElement) || target.tagName !== "SUMMARY") return;
+      const i = triggers.indexOf(target);
+      if (i < 0 || triggers.length < 2) return;
+      e.preventDefault();
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      const next = (i + dir + triggers.length) % triggers.length;
+      triggers[next]?.focus();
+    };
+    nav.addEventListener("keydown", onKeyDown);
+    return () => nav.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <header className="app-toolbar">
       <div className="app-toolbar__brand">
@@ -125,7 +144,7 @@ export function AppToolbar({
         <span className="app-toolbar__name">{APP_DISPLAY_NAME}</span>
       </div>
 
-      <nav ref={menubarRef} className="menubar" aria-label="Application menu">
+      <nav ref={menubarRef} className="menubar" aria-label="Application menu" role="menubar">
         <details className="menu">
           <summary className="menu__trigger">File</summary>
           <ul className="menu__list" role="menu">
