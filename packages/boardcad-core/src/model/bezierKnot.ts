@@ -37,12 +37,48 @@ export class BezierKnot {
       this.mirrored = false;
       return;
     }
+    this.relinkTangents(mode);
     this.continuous = true;
     this.mirrored = mode === "mirrored";
   }
   getHandleMode(): HandleMode {
     if (!this.continuous) return "independent";
     return this.mirrored ? "mirrored" : "aligned";
+  }
+
+  private relinkTangents(mode: "aligned" | "mirrored"): void {
+    const end = this.points[0]!;
+    const prev = this.points[1]!;
+    const next = this.points[2]!;
+    const vxPrev = end.x - prev.x;
+    const vyPrev = end.y - prev.y;
+    const vxNext = next.x - end.x;
+    const vyNext = next.y - end.y;
+    const lenPrev = Math.hypot(vxPrev, vyPrev);
+    const lenNext = Math.hypot(vxNext, vyNext);
+
+    const hasPrev = lenPrev > 1e-9;
+    const hasNext = lenNext > 1e-9;
+    const base = hasNext ? { x: vxNext, y: vyNext } : hasPrev ? { x: vxPrev, y: vyPrev } : { x: 10, y: 0 };
+    const baseLen = Math.hypot(base.x, base.y) || 1;
+    const ux = base.x / baseLen;
+    const uy = base.y / baseLen;
+
+    if (mode === "mirrored") {
+      const mLen = Math.max(lenPrev, lenNext, 10);
+      next.x = end.x + ux * mLen;
+      next.y = end.y + uy * mLen;
+      prev.x = end.x - ux * mLen;
+      prev.y = end.y - uy * mLen;
+      return;
+    }
+
+    const alignedPrevLen = hasPrev ? lenPrev : hasNext ? lenNext : 10;
+    const alignedNextLen = hasNext ? lenNext : hasPrev ? lenPrev : 10;
+    next.x = end.x + ux * alignedNextLen;
+    next.y = end.y + uy * alignedNextLen;
+    prev.x = end.x - ux * alignedPrevLen;
+    prev.y = end.y - uy * alignedPrevLen;
   }
   setOther(o: boolean): void {
     this.other = o;
