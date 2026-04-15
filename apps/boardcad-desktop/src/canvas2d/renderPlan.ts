@@ -27,6 +27,7 @@ export function renderPlanView(
   panPy = 0,
   markerState?: ControlPointMarkerState,
   planReference?: { layer: ReferenceImageLayer; img: HTMLImageElement | null },
+  finBoxes?: Array<{ x: number; y: number; cantDeg: number; toeInDeg: number }>,
 ): void {
   ctx.fillStyle = "#f4f4f8";
   ctx.fillRect(0, 0, cw, ch);
@@ -69,5 +70,31 @@ export function renderPlanView(
   }
   if (overlays.controlPoints) {
     drawControlPointsMirroredOutline(ctx, brd.outline, tf, ch, markerState);
+  }
+
+  if (finBoxes && finBoxes.length > 0) {
+    ctx.save();
+    for (const b of finBoxes) {
+      const sx = b.x * tf.s + tf.ox + tf.panPx;
+      const sy = ch - (b.y * tf.s + tf.oy + tf.panPy);
+      const r = Math.max(4, Math.min(8, tf.s * 12));
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = "#d97b00";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.fillStyle = "rgba(217,123,0,0.15)";
+      ctx.fill();
+      const toeDir = ((b.y >= 0 ? -1 : 1) * b.toeInDeg * Math.PI) / 180;
+      const dx = Math.cos(toeDir) * (r + 8);
+      const dy = Math.sin(toeDir) * (r + 8);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + dx, sy - dy);
+      ctx.strokeStyle = "rgba(217,123,0,0.9)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }

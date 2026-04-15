@@ -28,6 +28,7 @@ import type { BoardEditMode } from "../types/editMode";
 import type { OverlayState } from "../types/overlays";
 
 type DragEdit = { target: SplineEditTarget; before: number[] };
+type EditableKind = "outline" | "deck" | "bottom" | "section";
 
 function clampTangentByLocks(
   k: { points: Array<{ x: number; y: number }>; getTangentToPrevLocks: () => number; getTangentToNextLocks: () => number },
@@ -43,24 +44,69 @@ function clampTangentByLocks(
   if (locks & LOCK_Y_LESS) p.y = Math.min(p.y, end.y);
 }
 
-function buildDragEdits(board: BezierBoard, target: SplineEditTarget): DragEdit[] {
+function buildDragEditsForTargets(board: BezierBoard, targets: SplineEditTarget[]): DragEdit[] {
   const out: DragEdit[] = [];
+  const seen = new Set<string>();
   const push = (t: SplineEditTarget) => {
+    const key =
+      t.kind === "section"
+        ? `${t.kind}:${t.sectionIndex}:${t.index}:${t.point ?? "end"}`
+        : `${t.kind}:${t.index}:${t.point ?? "end"}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     const k = getKnot(board, t);
     if (!k) return;
     out.push({ target: t, before: knotSnapshot(k) });
   };
-  push(target);
-  const isEndAnchor = (target.point ?? "end") === "end";
-  if (isEndAnchor && target.kind === "deck") {
-    const j = pairedBottomIndexForDeck(board, target.index);
-    if (j != null) push({ kind: "bottom", index: j, point: "end" });
-  }
-  if (isEndAnchor && target.kind === "bottom") {
-    const j = pairedDeckIndexForBottom(board, target.index);
-    if (j != null) push({ kind: "deck", index: j, point: "end" });
+  for (const target of targets) {
+    push(target);
+    const isEndAnchor = (target.point ?? "end") === "end";
+    if (isEndAnchor && target.kind === "deck") {
+      const j = pairedBottomIndexForDeck(board, target.index);
+      if (j != null) push({ kind: "bottom", index: j, point: "end" });
+    }
+    if (isEndAnchor && target.kind === "bottom") {
+      const j = pairedDeckIndexForBottom(board, target.index);
+      if (j != null) push({ kind: "deck", index: j, point: "end" });
+    }
   }
   return out;
+}
+
+function getSelectionPoints(
+  board: BezierBoard,
+  kind: EditableKind,
+  sectionIndex: number,
+): Array<{ index: number; x: number; y: number }> {
+  if (kind === "outline") {
+    const n = board.outline.getNrOfControlPoints();
+    return Array.from({ length: n }, (_, index) => {
+      const p = board.outline.getControlPointOrThrow(index).getEndPoint();
+      return { index, x: p.x, y: p.y };
+    });
+  }
+  if (kind === "deck") {
+    const n = board.deck.getNrOfControlPoints();
+    return Array.from({ length: n }, (_, index) => {
+      const p = board.deck.getControlPointOrThrow(index).getEndPoint();
+      return { index, x: p.x, y: p.y };
+    });
+  }
+  if (kind === "bottom") {
+    const n = board.bottom.getNrOfControlPoints();
+    return Array.from({ length: n }, (_, index) => {
+      const p = board.bottom.getControlPointOrThrow(index).getEndPoint();
+      return { index, x: p.x, y: p.y };
+    });
+  }
+  const cs = board.crossSections[sectionIndex];
+  if (!cs) return [];
+  const sp = cs.getBezierSpline();
+  const n = sp.getNrOfControlPoints();
+  return Array.from({ length: n }, (_, index) => {
+    const p = sp.getControlPointOrThrow(index).getEndPoint();
+    return { index, x: p.x, y: p.y };
+  });
 }
 
 function stabilizeKeysForTargets(targets: SplineEditTarget[], brd: BezierBoard): void {
@@ -192,6 +238,21 @@ type PanSession = {
   startPanY: number;
 };
 
+type MarqueeSession = {
+  view: "plan" | "profile" | "section";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startBoardX: number;
+  startBoardY: number;
+  bounds: BBox2D;
+  padPx: number;
+  zoom: number;
+  panX: number;
+  panY: number;
+  kind: EditableKind;
+};
+
 const DRAG_START_THRESHOLD_PX = 4;
 
 function isPanPointer(e: React.PointerEvent<HTMLCanvasElement>): boolean {
@@ -224,6 +285,8 @@ export function useBoardCanvasEditing(opts: {
   setDirty: (v: boolean) => void;
   onSelectTarget: (t: SplineEditTarget | null) => void;
   onHoverTarget: (t: SplineEditTarget | null) => void;
+  selectedIndices: number[];
+  onSetSelectedIndices: (indices: number[]) => void;
 }) {
   const {
     brd,
@@ -250,10 +313,57 @@ export function useBoardCanvasEditing(opts: {
     setDirty,
     onSelectTarget,
     onHoverTarget,
+    selectedIndices,
+    onSetSelectedIndices,
   } = opts;
 
   const dragRef = useRef<DragRef>(null);
   const panSessionRef = useRef<PanSession | null>(null);
+  const marqueeRef = useRef<MarqueeSession | null>(null);
+
+  const applyMarqueeSelection = useCallback(
+    (canvas: HTMLCanvasElement, pointerId: number, endClientX: number, endClientY: number) => {
+      const m = marqueeRef.current;
+      if (!m || m.pointerId !== pointerId) return;
+      marqueeRef.current = null;
+      try {
+        canvas.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+      const end = clientToBoardMm(
+        endClientX,
+        endClientY,
+        canvas,
+        m.bounds,
+        m.padPx,
+        m.zoom,
+        m.panX,
+        m.panY,
+      );
+      if (!end) return;
+      const minX = Math.min(m.startBoardX, end.x);
+      const maxX = Math.max(m.startBoardX, end.x);
+      const minY = Math.min(m.startBoardY, end.y);
+      const maxY = Math.max(m.startBoardY, end.y);
+      const selected = getSelectionPoints(brd, m.kind, sectionIndex)
+        .filter((p) => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY)
+        .map((p) => p.index)
+        .sort((a, b) => a - b);
+      onSetSelectedIndices(selected);
+      if (selected.length > 0) {
+        onSelectTarget(
+          m.kind === "section"
+            ? { kind: "section", sectionIndex, index: selected[0]!, point: "end" }
+            : { kind: m.kind as Exclude<EditableKind, "section">, index: selected[0]!, point: "end" },
+        );
+      } else {
+        onSelectTarget(null);
+        onHoverTarget(null);
+      }
+    },
+    [brd, sectionIndex, onSetSelectedIndices, onSelectTarget, onHoverTarget],
+  );
 
   const finishPan = useCallback((canvas: HTMLCanvasElement, pointerId: number) => {
     const p = panSessionRef.current;
@@ -344,18 +454,63 @@ export function useBoardCanvasEditing(opts: {
         overlays,
       );
       if (!t) {
+        if (e.shiftKey) {
+          e.preventDefault();
+          canvas.setPointerCapture(e.pointerId);
+          marqueeRef.current = {
+            view: "plan",
+            pointerId: e.pointerId,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startBoardX: c.x,
+            startBoardY: c.y,
+            bounds: {
+              minX: planBounds.minX,
+              maxX: planBounds.maxX,
+              minY: planBounds.minY,
+              maxY: planBounds.maxY,
+            },
+            padPx: planPadPx,
+            zoom: planZoom,
+            panX: planPan.x,
+            panY: planPan.y,
+            kind: "outline",
+          };
+          return;
+        }
+        onSetSelectedIndices([]);
         onSelectTarget(null);
         onHoverTarget(null);
         return;
       }
+      if (e.shiftKey && (t.point ?? "end") === "end") {
+        e.preventDefault();
+        const next = selectedIndices.includes(t.index)
+          ? selectedIndices.filter((i) => i !== t.index)
+          : [...selectedIndices, t.index].sort((a, b) => a - b);
+        onSetSelectedIndices(next);
+        onSelectTarget({ ...t, point: "end" });
+        return;
+      }
       onSelectTarget(t);
       onHoverTarget(t);
+      if ((t.point ?? "end") === "end") {
+        if (!selectedIndices.includes(t.index) || selectedIndices.length <= 1) {
+          onSetSelectedIndices([t.index]);
+        }
+      } else {
+        onSetSelectedIndices([]);
+      }
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
+      const groupTargets: SplineEditTarget[] =
+        (t.point ?? "end") === "end" && selectedIndices.includes(t.index) && selectedIndices.length > 1
+          ? selectedIndices.map((idx) => ({ kind: "outline" as const, index: idx, point: "end" as const }))
+          : [t];
       dragRef.current = {
         view: "plan",
         pointerId: e.pointerId,
-        edits: buildDragEdits(brd, t),
+        edits: buildDragEditsForTargets(brd, groupTargets),
         originX: c.x,
         originY: c.y,
         startClientX: e.clientX,
@@ -394,6 +549,9 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "plan" && marqueeRef.current.pointerId === e.pointerId) {
+        return;
+      }
       if (!planBounds) return;
       if (!d) {
         if (editMode !== "outline") return;
@@ -469,6 +627,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "plan" && marqueeRef.current.pointerId === e.pointerId) {
+        applyMarqueeSelection(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
@@ -483,6 +645,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "plan" && marqueeRef.current.pointerId === e.pointerId) {
+        marqueeRef.current = null;
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
@@ -528,18 +694,64 @@ export function useBoardCanvasEditing(opts: {
         overlays,
       );
       if (!t) {
+        if (e.shiftKey) {
+          e.preventDefault();
+          canvas.setPointerCapture(e.pointerId);
+          marqueeRef.current = {
+            view: "profile",
+            pointerId: e.pointerId,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startBoardX: c.x,
+            startBoardY: c.y,
+            bounds: {
+              minX: profileStringerBounds.minX,
+              maxX: profileStringerBounds.maxX,
+              minY: profileStringerBounds.minY,
+              maxY: profileStringerBounds.maxY,
+            },
+            padPx: profilePadPx,
+            zoom: profileZoom,
+            panX: profilePan.x,
+            panY: profilePan.y,
+            kind: editMode,
+          };
+          return;
+        }
+        onSetSelectedIndices([]);
         onSelectTarget(null);
         onHoverTarget(null);
         return;
       }
+      if (e.shiftKey && (t.point ?? "end") === "end") {
+        e.preventDefault();
+        const next = selectedIndices.includes(t.index)
+          ? selectedIndices.filter((i) => i !== t.index)
+          : [...selectedIndices, t.index].sort((a, b) => a - b);
+        onSetSelectedIndices(next);
+        onSelectTarget({ ...t, point: "end" });
+        return;
+      }
       onSelectTarget(t);
       onHoverTarget(t);
+      if ((t.point ?? "end") === "end") {
+        if (!selectedIndices.includes(t.index) || selectedIndices.length <= 1) {
+          onSetSelectedIndices([t.index]);
+        }
+      } else {
+        onSetSelectedIndices([]);
+      }
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
+      const dragKind = editMode === "deck" ? "deck" : "bottom";
+      const groupTargets: SplineEditTarget[] =
+        (t.point ?? "end") === "end" && selectedIndices.includes(t.index) && selectedIndices.length > 1
+          ? selectedIndices.map((idx) => ({ kind: dragKind, index: idx, point: "end" as const }))
+          : [t];
       dragRef.current = {
         view: "profile",
         pointerId: e.pointerId,
-        edits: buildDragEdits(brd, t),
+        edits: buildDragEditsForTargets(brd, groupTargets),
         originX: c.x,
         originY: c.y,
         startClientX: e.clientX,
@@ -578,6 +790,9 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "profile" && marqueeRef.current.pointerId === e.pointerId) {
+        return;
+      }
       if (!profileStringerBounds) return;
       if (!d) {
         if (editMode !== "deck" && editMode !== "bottom") return;
@@ -653,6 +868,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "profile" && marqueeRef.current.pointerId === e.pointerId) {
+        applyMarqueeSelection(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
@@ -667,6 +886,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "profile" && marqueeRef.current.pointerId === e.pointerId) {
+        marqueeRef.current = null;
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
@@ -712,18 +935,68 @@ export function useBoardCanvasEditing(opts: {
         overlays,
       );
       if (!t) {
+        if (e.shiftKey) {
+          e.preventDefault();
+          canvas.setPointerCapture(e.pointerId);
+          marqueeRef.current = {
+            view: "section",
+            pointerId: e.pointerId,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startBoardX: c.x,
+            startBoardY: c.y,
+            bounds: {
+              minX: profileBounds.minX,
+              maxX: profileBounds.maxX,
+              minY: profileBounds.minY,
+              maxY: profileBounds.maxY,
+            },
+            padPx: profilePadPx,
+            zoom: sectionZoom,
+            panX: sectionPan.x,
+            panY: sectionPan.y,
+            kind: "section",
+          };
+          return;
+        }
+        onSetSelectedIndices([]);
         onSelectTarget(null);
         onHoverTarget(null);
         return;
       }
+      if (e.shiftKey && (t.point ?? "end") === "end") {
+        e.preventDefault();
+        const next = selectedIndices.includes(t.index)
+          ? selectedIndices.filter((i) => i !== t.index)
+          : [...selectedIndices, t.index].sort((a, b) => a - b);
+        onSetSelectedIndices(next);
+        onSelectTarget({ ...t, point: "end" });
+        return;
+      }
       onSelectTarget(t);
       onHoverTarget(t);
+      if ((t.point ?? "end") === "end") {
+        if (!selectedIndices.includes(t.index) || selectedIndices.length <= 1) {
+          onSetSelectedIndices([t.index]);
+        }
+      } else {
+        onSetSelectedIndices([]);
+      }
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
+      const groupTargets: SplineEditTarget[] =
+        (t.point ?? "end") === "end" && selectedIndices.includes(t.index) && selectedIndices.length > 1
+          ? selectedIndices.map((idx) => ({
+              kind: "section" as const,
+              sectionIndex,
+              index: idx,
+              point: "end" as const,
+            }))
+          : [t];
       dragRef.current = {
         view: "section",
         pointerId: e.pointerId,
-        edits: buildDragEdits(brd, t),
+        edits: buildDragEditsForTargets(brd, groupTargets),
         originX: c.x,
         originY: c.y,
         startClientX: e.clientX,
@@ -762,6 +1035,9 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "section" && marqueeRef.current.pointerId === e.pointerId) {
+        return;
+      }
       if (!profileBounds) return;
       if (!d) {
         if (editMode !== "section") return;
@@ -839,6 +1115,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "section" && marqueeRef.current.pointerId === e.pointerId) {
+        applyMarqueeSelection(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, true);
     },
@@ -853,6 +1133,10 @@ export function useBoardCanvasEditing(opts: {
         return;
       }
       const d = dragRef.current;
+      if (marqueeRef.current?.view === "section" && marqueeRef.current.pointerId === e.pointerId) {
+        marqueeRef.current = null;
+        return;
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       finishDrag(e.currentTarget, e.pointerId, false);
     },
@@ -865,6 +1149,8 @@ export function useBoardCanvasEditing(opts: {
       const id = e.pointerId;
       const panS = panSessionRef.current;
       if (panS?.pointerId === id) finishPan(e.currentTarget, id);
+      const m = marqueeRef.current;
+      if (m?.pointerId === id) marqueeRef.current = null;
       const d = dragRef.current;
       if (d?.pointerId === id) finishDrag(e.currentTarget, id, false);
     },

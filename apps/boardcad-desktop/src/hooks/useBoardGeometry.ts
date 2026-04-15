@@ -112,7 +112,7 @@ export function useBoardGeometry(
 
   const loftData = useMemo((): LoftMeshData | null => {
     if (!overlays.loft3d || brd.crossSections.length < 2) return null;
-    return buildLoftMesh3D(brd, outlineLowerXy, "draft");
+    return buildLoftMesh3D(brd, outlineLowerXy, "standard");
   }, [brd, outlineLowerXy, overlays.loft3d, geometryRevision]);
 
   return {

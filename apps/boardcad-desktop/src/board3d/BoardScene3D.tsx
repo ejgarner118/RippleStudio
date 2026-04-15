@@ -232,6 +232,7 @@ type SceneInnerProps = {
   outlineColor: number;
   gridMajor: number;
   gridMinor: number;
+  boardColor: string;
 };
 
 function SceneInner({
@@ -246,6 +247,7 @@ function SceneInner({
   outlineColor,
   gridMajor,
   gridMinor,
+  boardColor,
 }: SceneInnerProps) {
   const grid = useMemo(
     () => new THREE.GridHelper(28, 28, gridMajor, gridMinor),
@@ -300,7 +302,7 @@ function SceneInner({
             <LoftMesh
               positions={loft.positions}
               indices={loft.indices}
-              color="#5a8f5a"
+              color={boardColor}
             />
           ) : null}
         </Suspense>
@@ -318,6 +320,7 @@ type BoardScene3DProps = {
   isDark: boolean;
   orbitRef: RefObject<OrbitControlsApi | null>;
   viewResetNonce: number;
+  boardColor: "sage" | "ocean" | "sand" | "charcoal";
 };
 
 export function BoardScene3D({
@@ -329,11 +332,13 @@ export function BoardScene3D({
   isDark,
   orbitRef,
   viewResetNonce,
+  boardColor,
 }: BoardScene3DProps) {
   const background = isDark ? "#1a1f28" : "#e8ecf4";
   const outlineColor = isDark ? 0x6ab0ff : 0x1a5fb4;
   const gridMajor = isDark ? 0x4a5568 : 0xb0b8c8;
   const gridMinor = isDark ? 0x3d4556 : 0xc8ccd8;
+  const meshColor = boardColor === "ocean" ? "#3e7aa5" : boardColor === "sand" ? "#b69e73" : boardColor === "charcoal" ? "#4f545a" : "#5a8f5a";
 
   return (
     <Canvas
@@ -354,6 +359,7 @@ export function BoardScene3D({
         outlineColor={outlineColor}
         gridMajor={gridMajor}
         gridMinor={gridMinor}
+        boardColor={meshColor}
       />
     </Canvas>
   );

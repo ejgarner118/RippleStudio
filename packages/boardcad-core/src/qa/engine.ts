@@ -23,7 +23,7 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
   const issues: QaIssue[] = [];
   const minThicknessMm = ctx.minThicknessMm ?? 18;
   const minWidthMm = ctx.minWidthMm ?? 120;
-  const minSections = ctx.minSections ?? 3;
+  const minSections = ctx.minSections ?? 4;
   const length = getBoardLengthJava(board);
   const metrics = sampleBoardMetrics(board);
 
@@ -36,7 +36,7 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
     });
   }
 
-  const checkpoints = [0.1, 0.25, 0.5, 0.75, 0.9];
+  const checkpoints = [0.15, 0.35, 0.5, 0.65, 0.85];
   for (const p of checkpoints) {
     const x = length * p;
     const t = getThicknessAtPosJava(board, x);
@@ -44,12 +44,12 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
     if (t < minThicknessMm) {
       issues.push({
         id: `thin-${p}`,
-        severity: "warn",
+        severity: p < 0.25 || p > 0.75 ? "info" : "warn",
         message: `Low thickness at ${(p * 100).toFixed(0)}% length (${t.toFixed(1)} mm).`,
         hint: "Increase deck height or reduce bottom rocker in this region.",
       });
     }
-    if (w < minWidthMm) {
+    if (w < minWidthMm * 0.9) {
       issues.push({
         id: `narrow-${p}`,
         severity: p < 0.2 || p > 0.8 ? "info" : "warn",
@@ -94,14 +94,6 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
   for (let i = 0; i < board.crossSections.length; i++) {
     const sp = board.crossSections[i]!.getBezierSpline();
     const diag = computeRailDiagnostics(sp);
-    if (diag.tuckDepth < 0.5) {
-      issues.push({
-        id: `rail-tuck-shallow-${i}`,
-        severity: "info",
-        message: `Section #${i + 1}: rail tuck is very shallow.`,
-        hint: "Check if this is intentional for the target wave and rail feel.",
-      });
-    }
     if (diag.tuckDepth > Math.max(8, diag.deckToBottomDelta * 0.75)) {
       issues.push({
         id: `rail-tuck-deep-${i}`,
@@ -117,7 +109,7 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
       const c = sp.getControlPointOrThrow(k + 1).getEndPoint();
       const s1 = (b.y - a.y) / Math.max(1e-6, b.x - a.x);
       const s2 = (c.y - b.y) / Math.max(1e-6, c.x - b.x);
-      if (Math.abs(s2 - s1) > 2.8) {
+      if (Math.abs(s2 - s1) > 3.2) {
         issues.push({
           id: `rail-kink-${i}-${k}`,
           severity: "warn",
@@ -130,20 +122,22 @@ export function runBoardQaChecks(board: BezierBoard, ctx: QaContext = {}): QaIss
   }
 
   // Simple tool-clearance proxy: deep concaves + narrow width in center region.
+  let toolRiskRaised = false;
   for (const p of [0.35, 0.5, 0.65]) {
     const x = length * p;
     const t = getThicknessAtPosJava(board, x);
     const w = getWidthAtPosJava(board, x);
-    if (t < minThicknessMm * 0.8 && w < minWidthMm * 1.25) {
+    if (!toolRiskRaised && t < minThicknessMm * 0.8 && w < minWidthMm * 1.2) {
       issues.push({
         id: `tool-clearance-${p}`,
         severity: "warn",
         message: `Potential tool-clearance risk around ${(p * 100).toFixed(0)}% length.`,
         hint: "Review concave depth and cutter diameter before CAM export.",
       });
+      toolRiskRaised = true;
     }
   }
 
-  return issues;
+  return issues.slice(0, 16);
 }
 

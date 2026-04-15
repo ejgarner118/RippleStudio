@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { BezierBoard } from "../model/bezierBoard.js";
 import { loadBrdFromText } from "../brd/brdReader.js";
 import { MINI_BOARD_BRD } from "../defaultBoards.js";
-import { applyAutoScale } from "./autoScale.js";
+import { applyAutoScale, cloneBoardInto } from "./autoScale.js";
 
 describe("applyAutoScale", () => {
   it("keeps tail width when lockTailWidth enabled", () => {
@@ -32,6 +32,16 @@ describe("applyAutoScale", () => {
     });
     const after = brd.bottom.getControlPointOrThrow(noseIdx).getEndPoint().y;
     expect(Math.abs(after - before)).toBeLessThan(1e-6);
+  });
+
+  it("cloneBoardInto does not mutate source cross-sections", () => {
+    const src = new BezierBoard();
+    expect(loadBrdFromText(src, MINI_BOARD_BRD, "clone-src.brd")).toBe(0);
+    const srcSections = src.crossSections.length;
+    const dst = new BezierBoard();
+    cloneBoardInto(dst, src);
+    expect(src.crossSections.length).toBe(srcSections);
+    expect(dst.crossSections.length).toBe(srcSections);
   });
 });
 

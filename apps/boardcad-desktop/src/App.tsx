@@ -129,6 +129,8 @@ type FinLayout = {
   boxes: FinBox[];
 };
 
+type BoardMaterialColor = "sage" | "ocean" | "sand" | "charcoal";
+
 const BoardScene3D = lazy(async () => {
   const m = await import("./board3d/BoardScene3D");
   return { default: m.BoardScene3D };
@@ -165,6 +167,7 @@ export default function App() {
   const [sectionIndex, setSectionIndex] = useState(0);
   const [editMode, setEditMode] = useState<BoardEditMode>("outline");
   const [selectedControlPoint, setSelectedControlPoint] = useState<number | null>(null);
+  const [selectedControlPointsMulti, setSelectedControlPointsMulti] = useState<number[]>([]);
   const [selectedControlPointKind, setSelectedControlPointKind] = useState<
     "end" | "prev" | "next" | null
   >(null);
@@ -201,6 +204,7 @@ export default function App() {
   const [lastAutosaveRevision, setLastAutosaveRevision] = useState<number | null>(null);
   const [comparisonBaseline, setComparisonBaseline] = useState<BezierBoard | null>(null);
   const [finLayout, setFinLayout] = useState<FinLayout>({ template: "custom", boxes: [] });
+  const [boardMaterialColor, setBoardMaterialColor] = useState<BoardMaterialColor>("sage");
   const [camPreviewSummary, setCamPreviewSummary] = useState<ReturnType<typeof previewToolpath> | null>(null);
   const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
   const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
@@ -310,9 +314,9 @@ export default function App() {
   const analytics = sampleBoardMetrics(brd);
   const comparisonDelta = comparisonBaseline ? compareBoardMetrics(brd, comparisonBaseline) : null;
   const qaIssues = runBoardQaChecks(brd, {
-    minSections: 3,
+    minSections: 4,
     minThicknessMm: 18,
-    minWidthMm: 110,
+    minWidthMm: 120,
   }).sort((a, b) => {
     const rank: Record<string, number> = { error: 0, warn: 1, info: 2 };
     return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
@@ -357,8 +361,15 @@ export default function App() {
     onSelectTarget: (t) => {
       setSelectedControlPoint(t?.index ?? null);
       setSelectedControlPointKind(t?.point ?? "end");
+      setSelectedControlPointsMulti(t?.index != null ? [t.index] : []);
     },
     onHoverTarget: (t) => setHoveredTarget(t),
+    selectedIndices: selectedControlPointsMulti,
+    onSetSelectedIndices: (indices) => {
+      setSelectedControlPointsMulti(indices);
+      setSelectedControlPoint(indices.length > 0 ? indices[0]! : null);
+      setSelectedControlPointKind(indices.length > 0 ? "end" : null);
+    },
   });
 
   const clampZoom = useCallback((z: number) => Math.max(0.5, Math.min(z, 12)), []);
@@ -424,6 +435,7 @@ export default function App() {
       planPan.y,
       markerStateFor("outline"),
       { layer: referenceImages.plan, img: planRefImg },
+      finLayout.boxes,
     );
   }, [
     brd,
@@ -440,6 +452,7 @@ export default function App() {
     boardRevision,
     referenceImages.plan,
     planRefImg,
+    finLayout.boxes,
   ]);
 
   useEffect(() => {
@@ -952,8 +965,8 @@ export default function App() {
       const bottomY = (x: number) => q(x, 0, v.tailRocker, len * 0.5, 0, len, v.noseRocker);
       const thicknessY = (x: number) =>
         Math.max(
-          2,
-          q(x, 0, 2, xPeak, Math.max(v.maxThickness, 5), len, 2),
+          0.1,
+          q(x, 0, 0.1, xPeak, Math.max(v.maxThickness, 5), len, 0.1),
         );
 
       const applySplineY = (
@@ -971,6 +984,28 @@ export default function App() {
       };
       applySplineY(brd.bottom, bottomY);
       applySplineY(brd.deck, (x) => bottomY(x) + thicknessY(x));
+      // Keep nose/tail coupled so deck and bottom remain connected at tips.
+      const bCount = brd.bottom.getNrOfControlPoints();
+      const dCount = brd.deck.getNrOfControlPoints();
+      if (bCount > 0 && dCount > 0) {
+        const pairs: Array<[number, number]> = [
+          [0, 0],
+          [dCount - 1, bCount - 1],
+        ];
+        for (const [di, bi] of pairs) {
+          const dk = brd.deck.getControlPoint(di);
+          const bk = brd.bottom.getControlPoint(bi);
+          if (!dk || !bk) continue;
+          const tipX = (dk.points[0]!.x + bk.points[0]!.x) * 0.5;
+          const tipY = (dk.points[0]!.y + bk.points[0]!.y) * 0.5;
+          for (let j = 0; j < 3; j++) {
+            dk.points[j]!.x += tipX - dk.points[0]!.x;
+            dk.points[j]!.y += tipY - dk.points[0]!.y;
+            bk.points[j]!.x += tipX - bk.points[0]!.x;
+            bk.points[j]!.y += tipY - bk.points[0]!.y;
+          }
+        }
+      }
       brd.checkAndFixContinousy(false, true);
       brd.setLocks();
       setOverlays((o) => ({ ...o, profileDeck: true, profileBottom: true }));
@@ -1570,7 +1605,7 @@ export default function App() {
     showToast("Rail apex/tuck adjustment applied", "success");
   }, [brd, sectionIndex, stack, showToast]);
 
-  const generateCamPreview = useCallback(() => {
+  const generateCamPreview = useCallback(async () => {
     const len = Math.max(1, analytics.length);
     const points = Array.from({ length: 60 }, (_, i) => {
       const t = i / 59;
@@ -1581,8 +1616,14 @@ export default function App() {
     const preview = previewToolpath(points);
     setCamPreviewSummary(preview);
     const gcode = postProcessGcode(points, { id: "generic_3axis", spindleOn: "M3 S12000", spindleOff: "M5" });
-    void writeTextFromDialogPath(`${safeBoardFileBase(brd.name, "board")}.nc`, gcode);
-    showToast("CAM preview generated and post-processed G-code downloaded", "success");
+    try {
+      const outPath = await writeTextFromDialogPath(`${safeBoardFileBase(brd.name, "board")}.nc`, gcode);
+      showToast(`CAM preview generated and G-code saved to ${outPath}`, "success");
+    } catch (error) {
+      const msg = formatFsError(error);
+      setFileError(msg);
+      showToast(`CAM preview generated, but G-code export failed: ${msg}`, "error");
+    }
     trackUxEvent("cam.preview.generated", { points: points.length, warnings: preview.warnings.length });
   }, [analytics, brd.name, showToast]);
 
@@ -1808,6 +1849,8 @@ export default function App() {
         onApplyRailApexTuck={applyRailApexTuck}
         camPreview={camPreviewSummary}
         onGenerateCamPreview={generateCamPreview}
+        boardMaterialColor={boardMaterialColor}
+        onBoardMaterialColorChange={setBoardMaterialColor}
       />
 
       <main className="workspace">
@@ -1931,6 +1974,7 @@ export default function App() {
                     isDark={isDark}
                     orbitRef={orbitRef}
                     viewResetNonce={viewReset3dNonce}
+                    boardColor={boardMaterialColor}
                   />
                 </Suspense>
               </div>

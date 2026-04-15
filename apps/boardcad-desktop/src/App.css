@@ -288,7 +288,8 @@ select:focus:not(:focus-visible) {
 .sidebar__scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   padding: var(--space-4);
 }
 

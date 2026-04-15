@@ -91,6 +91,8 @@ type AppSidebarProps = {
   onApplyRailApexTuck: (apexShiftRatio: number, tuckDepthRatio: number) => void;
   camPreview: ToolpathPreview | null;
   onGenerateCamPreview: () => void;
+  boardMaterialColor: "sage" | "ocean" | "sand" | "charcoal";
+  onBoardMaterialColorChange: (color: "sage" | "ocean" | "sand" | "charcoal") => void;
 };
 
 export function AppSidebar({
@@ -157,6 +159,8 @@ export function AppSidebar({
   onApplyRailApexTuck,
   camPreview,
   onGenerateCamPreview,
+  boardMaterialColor,
+  onBoardMaterialColorChange,
 }: AppSidebarProps) {
   const cs = brd.crossSections[sectionIndex];
   const unitLabel = boardUnitsLabel(brd);
@@ -212,12 +216,6 @@ export function AppSidebar({
   }, [activeProject?.id, openProjectIdDraft]);
 
   const openProject = projectLibrary.find((p) => p.id === openProjectIdDraft) ?? null;
-
-  const scrollToEdit = () => {
-    const el = document.getElementById("sidebar-edit") as HTMLDetailsElement | null;
-    if (el) el.open = true;
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const coordPlaceholder = (v: number) => formatBoardCoordinate(v, brd.currentUnits);
 
@@ -894,7 +892,7 @@ export function AppSidebar({
               <input
                 type="range"
                 min={0.25}
-                max={3}
+                max={8}
                 step={0.02}
                 value={referenceImages.plan.scale}
                 onChange={(e) => onPatchPlanReference({ scale: Number(e.target.value) })}
@@ -937,6 +935,19 @@ export function AppSidebar({
                 disabled={!referenceImages.plan.objectUrl}
               />
             </label>
+            <div className="sidebar-actions">
+              {[-180, -90, 0, 90, 180].map((deg) => (
+                <button
+                  key={`plan-rot-${deg}`}
+                  type="button"
+                  className="btn btn--sm btn--subtle"
+                  disabled={!referenceImages.plan.objectUrl}
+                  onClick={() => onPatchPlanReference({ rotationDeg: deg })}
+                >
+                  {deg}°
+                </button>
+              ))}
+            </div>
             <label className="chk">
               <input
                 type="checkbox"
@@ -980,7 +991,7 @@ export function AppSidebar({
               <input
                 type="range"
                 min={0.25}
-                max={3}
+                max={8}
                 step={0.02}
                 value={referenceImages.profile.scale}
                 onChange={(e) => onPatchProfileReference({ scale: Number(e.target.value) })}
@@ -1023,6 +1034,19 @@ export function AppSidebar({
                 disabled={!referenceImages.profile.objectUrl}
               />
             </label>
+            <div className="sidebar-actions">
+              {[-180, -90, 0, 90, 180].map((deg) => (
+                <button
+                  key={`profile-rot-${deg}`}
+                  type="button"
+                  className="btn btn--sm btn--subtle"
+                  disabled={!referenceImages.profile.objectUrl}
+                  onClick={() => onPatchProfileReference({ rotationDeg: deg })}
+                >
+                  {deg}°
+                </button>
+              ))}
+            </div>
             <label className="chk">
               <input
                 type="checkbox"
@@ -1079,6 +1103,20 @@ export function AppSidebar({
                 }
               />
               Show loft mesh
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Board material color</span>
+              <select
+                value={boardMaterialColor}
+                onChange={(e) =>
+                  onBoardMaterialColorChange(e.target.value as "sage" | "ocean" | "sand" | "charcoal")
+                }
+              >
+                <option value="sage">Sage</option>
+                <option value="ocean">Ocean</option>
+                <option value="sand">Sand</option>
+                <option value="charcoal">Charcoal</option>
+              </select>
             </label>
           </div>
         </details>
@@ -1342,12 +1380,6 @@ export function AppSidebar({
           </div>
         </details>
         ) : null}
-
-        <div className="sidebar__footer-actions">
-          <button type="button" className="btn btn--sm btn--subtle" onClick={scrollToEdit}>
-            Edit controls
-          </button>
-        </div>
 
         <dl className="meta">
           <dt>Name</dt>

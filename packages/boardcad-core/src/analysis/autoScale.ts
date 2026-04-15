@@ -39,9 +39,62 @@ function cloneSpline(src: BezierSpline): BezierSpline {
   return out;
 }
 
+function copyBoardScalars(target: BezierBoard, source: BezierBoard): void {
+  target.filename = source.filename;
+  target.version = source.version;
+  target.name = source.name;
+  target.author = source.author;
+  target.designer = source.designer;
+  target.blankFile = source.blankFile;
+  target.topCuts = source.topCuts;
+  target.bottomCuts = source.bottomCuts;
+  target.railCuts = source.railCuts;
+  target.cutterDiam = source.cutterDiam;
+  target.blankPivot = source.blankPivot;
+  target.boardPivot = source.boardPivot;
+  target.maxAngle = source.maxAngle;
+  target.noseMargin = source.noseMargin;
+  target.tailMargin = source.tailMargin;
+  target.noseLength = source.noseLength;
+  target.tailLength = source.tailLength;
+  target.deltaXNose = source.deltaXNose;
+  target.deltaXTail = source.deltaXTail;
+  target.deltaXMiddle = source.deltaXMiddle;
+  target.toTailSpeed = source.toTailSpeed;
+  target.stringerSpeed = source.stringerSpeed;
+  target.regularSpeed = source.regularSpeed;
+  target.strut1 = [...source.strut1];
+  target.strut2 = [...source.strut2];
+  target.cutterStartPos = [...source.cutterStartPos];
+  target.blankTailPos = [...source.blankTailPos];
+  target.boardStartPos = [...source.boardStartPos];
+  target.currentUnits = source.currentUnits;
+  target.noseRockerOneFoot = source.noseRockerOneFoot;
+  target.tailRockerOneFoot = source.tailRockerOneFoot;
+  target.showOriginalBoard = source.showOriginalBoard;
+  target.stringerSpeedBottom = source.stringerSpeedBottom;
+  target.machineFolder = source.machineFolder;
+  target.topShoulderAngle = source.topShoulderAngle;
+  target.topShoulderCuts = source.topShoulderCuts;
+  target.bottomRailCuts = source.bottomRailCuts;
+  target.surfer = source.surfer;
+  target.comments = source.comments;
+  target.fins = [...source.fins];
+  target.finType = source.finType;
+  target.description = source.description;
+  target.securityLevel = source.securityLevel;
+  target.model = source.model;
+  target.aux1 = source.aux1;
+  target.aux2 = source.aux2;
+  target.aux3 = source.aux3;
+  target.currentCrossSection = source.currentCrossSection;
+  target.centerOfMass = source.centerOfMass;
+  target.storedScalars = { ...source.storedScalars };
+}
+
 export function cloneBoardInto(target: BezierBoard, source: BezierBoard): void {
   target.reset();
-  Object.assign(target, source);
+  copyBoardScalars(target, source);
   target.outline.clear();
   target.deck.clear();
   target.bottom.clear();
