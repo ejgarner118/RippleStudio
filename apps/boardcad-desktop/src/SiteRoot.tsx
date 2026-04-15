@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import App from "./App";
 import { APP_DISPLAY_NAME } from "./constants/brand";
+import { applyMarketingRouteSeo } from "./seo/documentSeo";
 import "./site.css";
 
 type Route = "/" | "/about" | "/contact" | "/app";
@@ -124,7 +125,7 @@ function SiteLayout({ children, route }: { children: React.ReactNode; route: Rou
     <div className="site-shell">
       <header className="site-header">
         <a href="/" className="site-brand">
-          <img src="/branding/RS_LogoBoard100.png" alt="" width={28} height={28} />
+          <img src="/branding/RS_LogoBoard100.png" alt="Ripple Studio" width={28} height={28} />
           <span>{APP_DISPLAY_NAME}</span>
         </a>
         <nav className="site-nav" aria-label="Primary">
@@ -382,6 +383,19 @@ function ContactPage({ route }: { route: Route }) {
 
 export function SiteRoot() {
   const [route, setRoute] = useState<Route>(() => normalizePathname(window.location.pathname));
+
+  useEffect(() => {
+    if (route === "/app") return;
+    if (route === "/about") {
+      applyMarketingRouteSeo("/about");
+      return;
+    }
+    if (route === "/contact") {
+      applyMarketingRouteSeo("/contact");
+      return;
+    }
+    applyMarketingRouteSeo("/");
+  }, [route]);
 
   useEffect(() => {
     const onPopState = () => setRoute(normalizePathname(window.location.pathname));

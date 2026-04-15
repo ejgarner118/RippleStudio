@@ -1,0 +1,5 @@
+# https://www.ripplestudio.app
+User-agent: *
+Allow: /
+
+Sitemap: https://www.ripplestudio.app/sitemap.xml

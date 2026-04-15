@@ -67,6 +67,15 @@ High-volume stabilization and modernization day focused on mesh reliability, edi
 - Commit `91139f9` pushed to `origin/main` (GitHub: `ejgarner118/RippleStudio`).
 - Vercel production deployment succeeded; alias live at `https://www.ripplestudio.app` (inspect: Vercel project `eric-garners-projects/ripple-studio`).
 
+### End-of-day: SEO optimization
+
+- **Meta & social:** Rich `index.html` defaults (description, keywords, canonical, Open Graph, Twitter cards, theme-color, apple-touch-icon).
+- **Structured data:** JSON-LD (`WebSite`, `Organization`, `SoftwareApplication`) for search engines.
+- **Discovery:** `public/robots.txt` and `public/sitemap.xml` pointing at `https://www.ripplestudio.app`.
+- **Runtime SEO:** `seo/siteUrl.ts` + `seo/documentSeo.ts` — per-route title/description/OG/Twitter/canonical updates for `/`, `/about`, `/contact`; app shell sets `/app` meta and syncs social titles when the board title changes. Optional `VITE_SITE_URL` in `.env.example`.
+- **Accessibility:** Marketing header logo `alt` text set to “Ripple Studio”.
+- Pushed to `origin/main` and redeployed Vercel production after verification.
+
 ---
 
 ## 2026-04-14 (initialized from git history)

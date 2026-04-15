@@ -118,6 +118,7 @@ import {
 import type { BoardEditMode } from "./types/editMode";
 import { APP_WINDOW_TITLE_SUFFIX } from "./constants/brand";
 import { getCanvasPalette, getScenePalette } from "./styles/themePalettes";
+import { applyAppShellSeo, syncAppSocialTitleFromDocument } from "./seo/documentSeo";
 import "./App.css";
 
 type FinBox = {
@@ -248,6 +249,10 @@ export default function App() {
 
   useEffect(() => {
     setLocale("en");
+  }, []);
+
+  useEffect(() => {
+    applyAppShellSeo();
   }, []);
 
   useEffect(() => {
@@ -437,6 +442,7 @@ export default function App() {
     const dirtyMark = isDirty ? "• " : "";
     const name = brd.name?.trim() || "Untitled";
     document.title = `${dirtyMark}${name} — ${APP_WINDOW_TITLE_SUFFIX}`;
+    syncAppSocialTitleFromDocument();
   }, [brd.name, isDirty]);
 
   useEffect(() => {
