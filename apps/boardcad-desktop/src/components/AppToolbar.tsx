@@ -130,7 +130,7 @@ export function AppToolbar({
 
   return (
     <header className="app-toolbar">
-      <div className="app-toolbar__brand">
+      <a className="app-toolbar__brand" href="/" onClick={() => closeMenus()}>
         <img
           className="app-toolbar__logo"
           src="/branding/RS_LogoBoard100.png"
@@ -142,7 +142,7 @@ export function AppToolbar({
           }}
         />
         <span className="app-toolbar__name">{APP_DISPLAY_NAME}</span>
-      </div>
+      </a>
 
       <nav ref={menubarRef} className="menubar" aria-label="Application menu" role="menubar">
         <details className="menu">

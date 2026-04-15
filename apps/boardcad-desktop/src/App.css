@@ -79,6 +79,12 @@ select:focus:not(:focus-visible) {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-toolbar__brand:hover {
+  opacity: 0.92;
 }
 
 .app-toolbar__logo {

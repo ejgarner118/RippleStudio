@@ -12,15 +12,15 @@ function normalizePathname(pathname: string): Route {
   return "/";
 }
 
-function NavLink({ href, label }: { href: Route; label: string }) {
+function NavLink({ href, label, active }: { href: Route; label: string; active?: boolean }) {
   return (
-    <a className="site-nav__link" href={href}>
+    <a className={`site-nav__link ${active ? "site-nav__link--active" : ""}`} href={href} aria-current={active ? "page" : undefined}>
       {label}
     </a>
   );
 }
 
-function SiteLayout({ children }: { children: React.ReactNode }) {
+function SiteLayout({ children, route }: { children: React.ReactNode; route: Route }) {
   return (
     <div className="site-shell">
       <header className="site-header">
@@ -29,9 +29,9 @@ function SiteLayout({ children }: { children: React.ReactNode }) {
           <span>{APP_DISPLAY_NAME}</span>
         </a>
         <nav className="site-nav" aria-label="Primary">
-          <NavLink href="/" label="Home" />
-          <NavLink href="/about" label="About" />
-          <NavLink href="/contact" label="Contact" />
+          <NavLink href="/" label="Home" active={route === "/"} />
+          <NavLink href="/about" label="About" active={route === "/about"} />
+          <NavLink href="/contact" label="Contact" active={route === "/contact"} />
           <a className="site-nav__cta" href="/app">
             Launch App
           </a>
@@ -39,7 +39,7 @@ function SiteLayout({ children }: { children: React.ReactNode }) {
       </header>
       <main className="site-main">{children}</main>
       <footer className="site-footer">
-        <span>{new Date().getFullYear()} Ripple Studio</span>
+        <span>{new Date().getFullYear()} Ripple Studio · Web-first surfboard CAD</span>
         <div className="site-footer__links">
           <a href="/about">About</a>
           <a href="/contact">Contact</a>
@@ -50,15 +50,15 @@ function SiteLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function HomePage() {
+function HomePage({ route }: { route: Route }) {
   return (
-    <SiteLayout>
+    <SiteLayout route={route}>
       <section className="hero">
         <p className="hero__eyebrow">Board Design, Modernized</p>
-        <h1>Design surfboards faster with clear tools and production-ready outputs.</h1>
+        <h1>From concept to cut path, in one clean shaping workflow.</h1>
         <p>
-          Ripple Studio combines precision spline editing, analytics, QA checks, and manufacturing export workflows
-          in a clean web-native interface.
+          Ripple Studio combines precise curve control, project snapshots, analytics, and manufacturing outputs
+          in a fast interface designed for modern shaping workflows.
         </p>
         <div className="hero__actions">
           <a className="btn btn--primary" href="/app">
@@ -69,10 +69,30 @@ function HomePage() {
           </a>
         </div>
       </section>
+      <section className="logo-rail" aria-label="Workflow outcomes">
+        <span>Task-first editing</span>
+        <span>Cross-section control</span>
+        <span>QA + CAM readiness</span>
+        <span>Versioned project snapshots</span>
+      </section>
+      <section className="stats-strip" aria-label="Product highlights">
+        <div>
+          <strong>2D + 3D</strong>
+          <span>Linked editing workflow</span>
+        </div>
+        <div>
+          <strong>Project snapshots</strong>
+          <span>Versioned board evolution</span>
+        </div>
+        <div>
+          <strong>QA + CAM</strong>
+          <span>Pre-manufacturing validation</span>
+        </div>
+      </section>
       <section className="feature-grid">
         <article className="feature-card">
           <h2>Shape with confidence</h2>
-          <p>Outline, rocker, and cross-section editing with handle controls and live visual feedback.</p>
+          <p>Outline, rocker, and rail editing with direct manipulation, stable handle modes, and clear visual feedback.</p>
         </article>
         <article className="feature-card">
           <h2>Validate before cutting</h2>
@@ -83,13 +103,29 @@ function HomePage() {
           <p>Project library + snapshots keep version history and let you reopen prior milestones instantly.</p>
         </article>
       </section>
+      <section className="split-showcase">
+        <article className="showcase-panel">
+          <h2>Built for fast iteration</h2>
+          <p>
+            Start from proven templates, compare deltas against baseline boards, and auto-scale while preserving key
+            performance constraints.
+          </p>
+        </article>
+        <article className="showcase-panel">
+          <h2>Ready for manufacturing handoff</h2>
+          <p>
+            Export board data in practical formats and review machining intent early with preview + rule checks before
+            committing foam and machine time.
+          </p>
+        </article>
+      </section>
     </SiteLayout>
   );
 }
 
-function AboutPage() {
+function AboutPage({ route }: { route: Route }) {
   return (
-    <SiteLayout>
+    <SiteLayout route={route}>
       <section className="content-page">
         <h1>About Ripple Studio</h1>
         <p>
@@ -102,17 +138,21 @@ function AboutPage() {
           <li>Reliable manufacturing handoff (exports, CAM prep, QA checks)</li>
           <li>Simple workflows that still preserve advanced control</li>
         </ul>
-        <p>
-          Ready to start? <a href="/app">Launch the app</a>.
-        </p>
+        <div className="inline-cta">
+          <a className="btn btn--primary" href="/app">Launch the app</a>
+        </div>
       </section>
     </SiteLayout>
   );
 }
 
-function ContactPage() {
+function ContactPage({ route }: { route: Route }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const canSend = name.trim().length > 1 && email.includes("@") && message.trim().length > 8;
   return (
-    <SiteLayout>
+    <SiteLayout route={route}>
       <section className="content-page">
         <h1>Contact Us</h1>
         <p>Questions, feedback, or feature requests? We would love to hear from you.</p>
@@ -130,9 +170,40 @@ function ContactPage() {
             </p>
           </article>
         </div>
-        <a className="btn btn--primary" href="/app">
-          Launch App
-        </a>
+        <div className="inline-cta">
+          <div className="contact-form">
+            <label>
+              <span>Name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+            </label>
+            <label>
+              <span>Email</span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+            </label>
+            <label>
+              <span>Message</span>
+              <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="How can we help?" />
+            </label>
+          </div>
+          <a className="btn btn--primary" href="/app">
+            Launch App
+          </a>
+          <a
+            className={`btn btn--subtle ${canSend ? "" : "btn--disabled-link"}`}
+            href={
+              canSend
+                ? `mailto:support@ripplestudio.app?subject=${encodeURIComponent(`Ripple Studio contact from ${name}`)}&body=${encodeURIComponent(
+                    `Name: ${name}\nEmail: ${email}\n\n${message}`,
+                  )}`
+                : "#"
+            }
+            onClick={(e) => {
+              if (!canSend) e.preventDefault();
+            }}
+          >
+            Send via email
+          </a>
+        </div>
       </section>
     </SiteLayout>
   );
@@ -166,8 +237,8 @@ export function SiteRoot() {
   }, []);
 
   if (route === "/app") return <App />;
-  if (route === "/about") return <AboutPage />;
-  if (route === "/contact") return <ContactPage />;
-  return <HomePage />;
+  if (route === "/about") return <AboutPage route={route} />;
+  if (route === "/contact") return <ContactPage route={route} />;
+  return <HomePage route={route} />;
 }
 

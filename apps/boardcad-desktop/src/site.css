@@ -3,7 +3,10 @@
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--surface-app);
+  background:
+    radial-gradient(1200px 600px at 15% -10%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 58%),
+    radial-gradient(1000px 520px at 100% -20%, color-mix(in srgb, #62d4ff 15%, transparent), transparent 55%),
+    var(--surface-app);
   color: var(--text-primary);
 }
 
@@ -14,7 +17,11 @@
   gap: 1rem;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
+  background: color-mix(in srgb, var(--surface-panel) 88%, transparent);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 15;
 }
 
 .site-brand {
@@ -42,6 +49,12 @@
   font-weight: 600;
 }
 
+.site-nav__link--active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+}
+
 .site-nav__link:hover,
 .site-nav__cta:hover {
   background: var(--accent-muted);
@@ -49,13 +62,15 @@
 }
 
 .site-nav__cta {
-  border: 1px solid var(--border-subtle);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-primary);
 }
 
 .site-main {
   width: min(1100px, 92vw);
   margin: 0 auto;
-  padding: 2.5rem 0;
+  padding: 3.1rem 0;
 }
 
 .hero h1 {
@@ -66,6 +81,8 @@
 
 .hero p {
   max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: 1.02rem;
 }
 
 .hero__eyebrow {
@@ -83,6 +100,23 @@
   margin-top: 1.1rem;
 }
 
+.logo-rail {
+  margin-top: 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.logo-rail span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
+}
+
 .feature-grid {
   margin-top: 1.8rem;
   display: grid;
@@ -90,11 +124,37 @@
   gap: 0.85rem;
 }
 
+.stats-strip {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.7rem;
+}
+
+.stats-strip > div {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-panel) 88%, transparent);
+  padding: 0.7rem 0.8rem;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.stats-strip strong {
+  font-size: 0.95rem;
+}
+
+.stats-strip span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
 .feature-card {
   background: var(--surface-panel);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 1rem;
+  padding: 1.05rem;
+  box-shadow: 0 8px 24px rgba(8, 16, 24, 0.06);
 }
 
 .feature-card h2 {
@@ -105,6 +165,11 @@
 
 .content-page {
   max-width: 72ch;
+  background: color-mix(in srgb, var(--surface-panel) 88%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.2rem 1.2rem 1.4rem;
+  box-shadow: 0 8px 24px rgba(8, 16, 24, 0.06);
 }
 
 .content-page h1 {
@@ -122,9 +187,67 @@
   margin: 0.9rem 0 1.2rem;
 }
 
+.split-showcase {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.85rem;
+}
+
+.showcase-panel {
+  background: color-mix(in srgb, var(--surface-panel) 90%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.showcase-panel h2 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.showcase-panel p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.inline-cta {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.contact-form {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.4rem;
+}
+
+.contact-form label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.contact-form input,
+.contact-form textarea {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.btn--disabled-link {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .site-footer {
   border-top: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
+  background: color-mix(in srgb, var(--surface-panel) 90%, transparent);
   padding: 0.9rem 1.25rem;
   display: flex;
   justify-content: space-between;
