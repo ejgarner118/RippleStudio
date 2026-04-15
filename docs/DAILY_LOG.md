@@ -64,8 +64,8 @@ High-volume stabilization and modernization day focused on mesh reliability, edi
 
 **Deployment**
 
-- Changes committed and pushed to `origin/main` on GitHub.
-- Production deploy triggered on Vercel (`vercel --prod` / linked project).
+- Commit `91139f9` pushed to `origin/main` (GitHub: `ejgarner118/RippleStudio`).
+- Vercel production deployment succeeded; alias live at `https://www.ripplestudio.app` (inspect: Vercel project `eric-garners-projects/ripple-studio`).
 
 ---
 
