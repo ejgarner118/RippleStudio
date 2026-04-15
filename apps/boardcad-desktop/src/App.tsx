@@ -1479,6 +1479,39 @@ export default function App() {
     showToast("Snapshot saved", "success");
   }, [activeProjectId, brd, boardRevision, showToast]);
 
+  const openProjectSnapshot = useCallback((projectId: string, snapshotId: string) => {
+    const project = projectLibrary.find((p) => p.id === projectId);
+    if (!project) {
+      showToast("Project not found.", "error");
+      return;
+    }
+    const snapshot = project.snapshots.find((s) => s.id === snapshotId);
+    if (!snapshot) {
+      showToast("Snapshot not found.", "error");
+      return;
+    }
+    const next = new BezierBoard();
+    const bytes = new TextEncoder().encode(snapshot.brdText);
+    const result = loadBrdFromBytes(next, bytes, `project://${project.id}/${snapshot.id}`);
+    if (result !== 0) {
+      showToast("Could not open project snapshot.", "error");
+      return;
+    }
+    stack.clear();
+    bumpCmdNonce();
+    setBrd(next);
+    setPath(null);
+    setSectionIndex(firstDrawableCrossSectionIndex(next));
+    setSelectedControlPoint(null);
+    setSelectedControlPointKind(null);
+    setActiveProjectId(project.id);
+    setIsDirty(false);
+    setLastAutosaveRevision(boardRevision);
+    setEmptyGuidedStep(null);
+    bumpBoardRevision();
+    showToast(`Opened project snapshot: ${snapshot.title}`, "success");
+  }, [projectLibrary, showToast, stack, boardRevision]);
+
   const patchActiveProjectMetadata = useCallback((patch: {
     rider?: string;
     waveType?: string;
@@ -1763,6 +1796,7 @@ export default function App() {
         onCreateProject={createProject}
         onAttachCurrentBoardToProject={attachCurrentBoardToProject}
         onCreateSnapshot={createProjectSnapshot}
+        onOpenProjectSnapshot={openProjectSnapshot}
         onProjectMetadataChange={patchActiveProjectMetadata}
         qaIssues={qaIssues}
         finLayoutSummary={`${finLayout.template}, ${finLayout.boxes.length} boxes`}

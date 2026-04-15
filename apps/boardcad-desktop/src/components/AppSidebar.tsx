@@ -77,6 +77,7 @@ type AppSidebarProps = {
   onCreateProject: (name: string) => void;
   onAttachCurrentBoardToProject: (projectId: string) => void;
   onCreateSnapshot: (title: string) => void;
+  onOpenProjectSnapshot: (projectId: string, snapshotId: string) => void;
   onProjectMetadataChange: (
     patch: { rider?: string; waveType?: string; autosaveEnabled?: boolean; autosaveIntervalSec?: number },
   ) => void;
@@ -144,6 +145,7 @@ export function AppSidebar({
   onCreateProject,
   onAttachCurrentBoardToProject,
   onCreateSnapshot,
+  onOpenProjectSnapshot,
   onProjectMetadataChange,
   qaIssues,
   finLayoutSummary,
@@ -167,6 +169,8 @@ export function AppSidebar({
   const [snapshotTitle, setSnapshotTitle] = useState("");
   const [projectRiderDraft, setProjectRiderDraft] = useState("");
   const [projectWaveDraft, setProjectWaveDraft] = useState("");
+  const [openProjectIdDraft, setOpenProjectIdDraft] = useState("");
+  const [openSnapshotIdDraft, setOpenSnapshotIdDraft] = useState("");
   const [scaleDraft, setScaleDraft] = useState({
     lengthScale: 1.08,
     widthScale: 1.04,
@@ -200,6 +204,14 @@ export function AppSidebar({
     setProjectRiderDraft(activeProject?.rider ?? "");
     setProjectWaveDraft(activeProject?.waveType ?? "");
   }, [activeProject?.id, activeProject?.rider, activeProject?.waveType]);
+
+  useEffect(() => {
+    if (!openProjectIdDraft && activeProject?.id) {
+      setOpenProjectIdDraft(activeProject.id);
+    }
+  }, [activeProject?.id, openProjectIdDraft]);
+
+  const openProject = projectLibrary.find((p) => p.id === openProjectIdDraft) ?? null;
 
   const scrollToEdit = () => {
     const el = document.getElementById("sidebar-edit") as HTMLDetailsElement | null;
@@ -435,6 +447,49 @@ export function AppSidebar({
               disabled={!activeProjectId}
             >
               Save snapshot
+            </button>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Open project</span>
+              <select
+                value={openProjectIdDraft}
+                onChange={(e) => {
+                  setOpenProjectIdDraft(e.target.value);
+                  setOpenSnapshotIdDraft("");
+                }}
+              >
+                <option value="">Select project…</option>
+                {projectLibrary.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="sidebar-field">
+              <span className="sidebar-field__label">Open snapshot</span>
+              <select
+                value={openSnapshotIdDraft}
+                onChange={(e) => setOpenSnapshotIdDraft(e.target.value)}
+                disabled={!openProject}
+              >
+                <option value="">Select snapshot…</option>
+                {(openProject?.snapshots ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title} ({new Date(s.createdAt).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn btn--sm btn--primary"
+              disabled={!openProjectIdDraft || !openSnapshotIdDraft}
+              onClick={() => {
+                if (!openProjectIdDraft || !openSnapshotIdDraft) return;
+                onOpenProjectSnapshot(openProjectIdDraft, openSnapshotIdDraft);
+              }}
+            >
+              Open selected snapshot
             </button>
             <label className="sidebar-field">
               <span className="sidebar-field__label">Rider</span>

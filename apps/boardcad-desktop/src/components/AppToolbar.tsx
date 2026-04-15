@@ -153,6 +153,10 @@ export function AppToolbar({
                 type="button"
                 role="menuitem"
                 className="menu__item"
+                onMouseDown={(e) => {
+                  // Prevent summary/details focus-toggle quirks from swallowing click.
+                  e.preventDefault();
+                }}
                 onClick={() => {
                   closeMenus();
                   onNew();
