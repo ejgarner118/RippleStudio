@@ -5,6 +5,7 @@ import type { HandleMode } from "@boardcad/core";
 import type { OverlayState } from "../types/overlays";
 import type { BoardEditMode } from "../types/editMode";
 import type { ReferenceImageLayer, ReferenceImageState } from "../types/referenceImage";
+import type { WorkflowFocusArea } from "../types/workflowFocus";
 import { boardUnitsLabel } from "../lib/unitLabel";
 import { formatBoardCoordinate } from "../lib/unitDisplay";
 import type { BoardDeltaMetrics, BoardMetrics, QaIssue, ToolpathPreview } from "@boardcad/core";
@@ -107,6 +108,11 @@ type AppSidebarProps = {
     normalView: boolean;
     highPrecisionDepth: boolean;
   }>) => void;
+  focusArea: WorkflowFocusArea;
+  onFocusAreaChange: (next: WorkflowFocusArea) => void;
+  canMutateBoard: boolean;
+  inspectSceneLook: "neutral" | "studio" | "wire";
+  onInspectSceneLookChange: (next: "neutral" | "studio" | "wire") => void;
 };
 
 export function AppSidebar({
@@ -179,6 +185,11 @@ export function AppSidebar({
   onMeshPreviewModeChange,
   renderDebug,
   onRenderDebugChange,
+  focusArea,
+  onFocusAreaChange,
+  canMutateBoard,
+  inspectSceneLook,
+  onInspectSceneLookChange,
 }: AppSidebarProps) {
   const cs = brd.crossSections[sectionIndex];
   const unitLabel = boardUnitsLabel(brd);
@@ -205,7 +216,6 @@ export function AppSidebar({
   const [finToeDraft, setFinToeDraft] = useState(2.5);
   const [apexShiftDraft, setApexShiftDraft] = useState(0);
   const [tuckDepthDraft, setTuckDepthDraft] = useState(0);
-  const [focusArea, setFocusArea] = useState<"create" | "inspect" | "project" | "manufacture" | "display">("create");
   const [detailMode, setDetailMode] = useState<"basic" | "advanced">("basic");
   const scaleHasInvalidValue =
     !Number.isFinite(scaleDraft.lengthScale) ||
@@ -217,6 +227,12 @@ export function AppSidebar({
   const qaErrorCount = qaIssues.filter((q) => q.severity === "error").length;
   const qaWarnCount = qaIssues.filter((q) => q.severity === "warn").length;
   const hasSectionSelected = Boolean(cs);
+  const isInspect = focusArea === "inspect";
+  const isProject = focusArea === "project";
+  const isOutput = focusArea === "manufacture";
+  const isDisplay = focusArea === "display";
+  const isCreate = focusArea === "create";
+  const showAdvanced = detailMode === "advanced" && canMutateBoard;
 
   useEffect(() => {
     setCoordDraft({ x: "", y: "" });
@@ -244,7 +260,7 @@ export function AppSidebar({
           <SegmentedControl
             ariaLabel="Workflow focus"
             value={focusArea}
-            onChange={setFocusArea}
+            onChange={onFocusAreaChange}
             options={[
               { id: "create", label: "Create" },
               { id: "inspect", label: "Inspect" },
@@ -273,7 +289,7 @@ export function AppSidebar({
           </div>
         </div>
         <div className="sidebar__sticky-head">
-          {(focusArea === "create" || focusArea === "display") ? (
+          {(isCreate || isDisplay || isProject) && canMutateBoard ? (
           <details className="sidebar-section" id="sidebar-edit" open>
             <summary className="sidebar-section__summary">Edit</summary>
             <div className="sidebar-section__body">
@@ -398,7 +414,7 @@ export function AppSidebar({
           ) : null}
         </div>
 
-        {focusArea === "project" ? (
+        {isProject ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Project library</summary>
           <div className="sidebar-section__body">
@@ -565,7 +581,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "create" || (focusArea === "inspect" && detailMode === "advanced")) ? (
+        {(isCreate || showAdvanced) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Auto scaling</summary>
           <div className="sidebar-section__body">
@@ -643,7 +659,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {focusArea === "inspect" ? (
+        {(isCreate || isProject) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Compare and analytics</summary>
           <div className="sidebar-section__body">
@@ -677,7 +693,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "create" || (focusArea === "inspect" && detailMode === "advanced")) ? (
+        {(isCreate || showAdvanced) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Rail, fins, curvature</summary>
           <div className="sidebar-section__body">
@@ -792,8 +808,8 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "manufacture" || focusArea === "inspect") ? (
-        <details className="sidebar-section">
+        {(isOutput || isInspect) ? (
+        <details className="sidebar-section" open={isOutput || isInspect}>
           <summary className="sidebar-section__summary">CAM preview and QA</summary>
           <div className="sidebar-section__body">
             <div className="sidebar-actions">
@@ -828,8 +844,8 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "display" || detailMode === "advanced") ? (
-        <details className="sidebar-section">
+        {(isDisplay || showAdvanced || isInspect || isOutput) ? (
+        <details className="sidebar-section" open={isDisplay && !isCreate && !isProject && !isInspect && !isOutput}>
           <summary className="sidebar-section__summary">View</summary>
           <div className="sidebar-section__body">
             <p className="sidebar-hint">Show only what you need while editing.</p>
@@ -1078,7 +1094,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "display" || detailMode === "advanced") ? (
+        {(isDisplay || showAdvanced || isInspect) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Profile view</summary>
           <div className="sidebar-section__body">
@@ -1107,11 +1123,26 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "display" || detailMode === "advanced") ? (
+        {(isDisplay || showAdvanced || isInspect) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">3D</summary>
           <div className="sidebar-section__body">
             <p className="sidebar-hint">Enable or hide loft mesh.</p>
+            {isInspect ? (
+              <label className="sidebar-field">
+                <span className="sidebar-field__label">Inspect lighting/material</span>
+                <select
+                  value={inspectSceneLook}
+                  onChange={(e) =>
+                    onInspectSceneLookChange(e.target.value as "neutral" | "studio" | "wire")
+                  }
+                >
+                  <option value="neutral">Neutral</option>
+                  <option value="studio">Studio</option>
+                  <option value="wire">Wireframe-like</option>
+                </select>
+              </label>
+            ) : null}
             <label className="chk">
               <input
                 type="checkbox"
@@ -1188,8 +1219,8 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "create" || detailMode === "advanced") ? (
-        <details className="sidebar-section" open>
+        {(isCreate || showAdvanced || (isProject && canMutateBoard)) ? (
+        <details className="sidebar-section">
           <summary className="sidebar-section__summary">Sections</summary>
           <div className="sidebar-section__body">
             {brd.crossSections.length === 0 ? (
@@ -1282,7 +1313,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "inspect" || focusArea === "manufacture") ? (
+        {(isInspect || isOutput) ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Validate</summary>
           <div className="sidebar-section__body">
@@ -1295,18 +1326,20 @@ export function AppSidebar({
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
-                <div className="sidebar-actions">
-                  <button type="button" className="btn btn--sm btn--primary" onClick={onFixSectionOrder}>
-                    Sort sections by station
-                  </button>
-                </div>
+                {canMutateBoard ? (
+                  <div className="sidebar-actions">
+                    <button type="button" className="btn btn--sm btn--primary" onClick={onFixSectionOrder}>
+                      Sort sections by station
+                    </button>
+                  </div>
+                ) : null}
               </>
             )}
           </div>
         </details>
         ) : null}
 
-        {(focusArea === "create" || detailMode === "advanced") ? (
+        {(isCreate || showAdvanced) && canMutateBoard ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Profile shaping</summary>
           <div className="sidebar-section__body">
@@ -1378,7 +1411,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "project" || detailMode === "advanced") ? (
+        {isProject ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">Board settings</summary>
           <div className="sidebar-section__body">
@@ -1423,7 +1456,7 @@ export function AppSidebar({
         </details>
         ) : null}
 
-        {(focusArea === "project" || detailMode === "advanced") ? (
+        {isProject ? (
         <details className="sidebar-section">
           <summary className="sidebar-section__summary">File units</summary>
           <div className="sidebar-section__body">

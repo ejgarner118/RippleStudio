@@ -132,6 +132,7 @@ function LoftMesh({
   flatShading,
   frontSideOnly,
   normalView,
+  inspectSceneLook,
 }: {
   positions: Float32Array;
   indices: Uint32Array;
@@ -139,6 +140,7 @@ function LoftMesh({
   flatShading: boolean;
   frontSideOnly: boolean;
   normalView: boolean;
+  inspectSceneLook: "neutral" | "studio" | "wire";
 }) {
   const mesh = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -152,14 +154,15 @@ function LoftMesh({
           color,
           side,
           flatShading,
-          metalness: 0.05,
-          roughness: 0.55,
-          emissive: new THREE.Color(color).multiplyScalar(0.12),
+          metalness: inspectSceneLook === "studio" ? 0.24 : 0.05,
+          roughness: inspectSceneLook === "studio" ? 0.24 : 0.55,
+          emissive: new THREE.Color(color).multiplyScalar(inspectSceneLook === "studio" ? 0.2 : 0.12),
+          wireframe: inspectSceneLook === "wire",
         });
     const meshObj = new THREE.Mesh(g, m);
     meshObj.scale.set(SCALE_3D, SCALE_3D, SCALE_3D);
     return meshObj;
-  }, [positions, indices, color, flatShading, frontSideOnly, normalView]);
+  }, [positions, indices, color, flatShading, frontSideOnly, normalView, inspectSceneLook]);
   useEffect(() => {
     return () => {
       const g = mesh.geometry;
@@ -266,6 +269,7 @@ type SceneInnerProps = {
     frontSideOnly: boolean;
     normalView: boolean;
   };
+  inspectSceneLook: "neutral" | "studio" | "wire";
 };
 
 function SceneInner({
@@ -282,6 +286,7 @@ function SceneInner({
   gridMinor,
   boardColor,
   renderDebug,
+  inspectSceneLook,
 }: SceneInnerProps) {
   const grid = useMemo(
     () => {
@@ -321,9 +326,12 @@ function SceneInner({
   return (
     <>
       <color attach="background" args={[background]} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[6, 10, 8]} intensity={0.95} />
-      <directionalLight position={[-4, 2, -2]} intensity={0.35} />
+      <ambientLight intensity={inspectSceneLook === "studio" ? 0.48 : 0.6} />
+      <directionalLight position={[6, 10, 8]} intensity={inspectSceneLook === "studio" ? 1.25 : 0.95} />
+      <directionalLight position={[-4, 2, -2]} intensity={inspectSceneLook === "studio" ? 0.62 : 0.35} />
+      {inspectSceneLook === "studio" ? (
+        <directionalLight position={[0, 4, -8]} intensity={0.28} />
+      ) : null}
       <DampedOrbitControls ref={orbitRef} contentBox={contentBox} />
       <ResetViewListener nonce={viewResetNonce} apiRef={orbitRef} />
       <group position={groupPos}>
@@ -351,6 +359,7 @@ function SceneInner({
               flatShading={renderDebug.flatShading}
               frontSideOnly={renderDebug.frontSideOnly}
               normalView={renderDebug.normalView}
+              inspectSceneLook={inspectSceneLook}
             />
           ) : null}
         </Suspense>
@@ -377,6 +386,7 @@ type BoardScene3DProps = {
     normalView: boolean;
     highPrecisionDepth: boolean;
   };
+  inspectSceneLook: "neutral" | "studio" | "wire";
 };
 
 export function BoardScene3D({
@@ -392,6 +402,7 @@ export function BoardScene3D({
   scenePalette,
   meshPreviewMode,
   renderDebug,
+  inspectSceneLook,
 }: BoardScene3DProps) {
   void meshPreviewMode;
   void isDark;
@@ -422,6 +433,7 @@ export function BoardScene3D({
         gridMinor={gridMinor}
         boardColor={meshColor}
         renderDebug={renderDebug}
+        inspectSceneLook={inspectSceneLook}
       />
     </Canvas>
   );

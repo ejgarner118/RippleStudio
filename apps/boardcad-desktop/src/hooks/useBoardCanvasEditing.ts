@@ -287,6 +287,7 @@ export function useBoardCanvasEditing(opts: {
   onHoverTarget: (t: SplineEditTarget | null) => void;
   selectedIndices: number[];
   onSetSelectedIndices: (indices: number[]) => void;
+  readOnly: boolean;
 }) {
   const {
     brd,
@@ -315,6 +316,7 @@ export function useBoardCanvasEditing(opts: {
     onHoverTarget,
     selectedIndices,
     onSetSelectedIndices,
+    readOnly,
   } = opts;
 
   const dragRef = useRef<DragRef>(null);
@@ -340,6 +342,7 @@ export function useBoardCanvasEditing(opts: {
         m.zoom,
         m.panX,
         m.panY,
+        m.kind === "outline" ? undefined : { alignY: "top" },
       );
       if (!end) return;
       const minX = Math.min(m.startBoardX, end.x);
@@ -432,7 +435,7 @@ export function useBoardCanvasEditing(opts: {
         };
         return;
       }
-      if (editMode !== "outline") return;
+      if (readOnly || editMode !== "outline") return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -554,7 +557,7 @@ export function useBoardCanvasEditing(opts: {
       }
       if (!planBounds) return;
       if (!d) {
-        if (editMode !== "outline") return;
+        if (readOnly || editMode !== "outline") return;
         const c = clientToBoardMm(
           e.clientX,
           e.clientY,
@@ -672,7 +675,7 @@ export function useBoardCanvasEditing(opts: {
         };
         return;
       }
-      if (editMode !== "deck" && editMode !== "bottom") return;
+      if (readOnly || (editMode !== "deck" && editMode !== "bottom")) return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -682,6 +685,7 @@ export function useBoardCanvasEditing(opts: {
         profileZoom,
         profilePan.x,
         profilePan.y,
+        { alignY: "top" },
       );
       if (!c) return;
       const t = pickEditTarget(
@@ -795,7 +799,7 @@ export function useBoardCanvasEditing(opts: {
       }
       if (!profileStringerBounds) return;
       if (!d) {
-        if (editMode !== "deck" && editMode !== "bottom") return;
+        if (readOnly || (editMode !== "deck" && editMode !== "bottom")) return;
         const c = clientToBoardMm(
           e.clientX,
           e.clientY,
@@ -805,6 +809,7 @@ export function useBoardCanvasEditing(opts: {
           profileZoom,
           profilePan.x,
           profilePan.y,
+          { alignY: "top" },
         );
         if (!c) return;
         onHoverTarget(
@@ -837,6 +842,7 @@ export function useBoardCanvasEditing(opts: {
         profileZoom,
         profilePan.x,
         profilePan.y,
+        { alignY: "top" },
       );
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;
@@ -913,7 +919,7 @@ export function useBoardCanvasEditing(opts: {
         };
         return;
       }
-      if (editMode !== "section") return;
+      if (readOnly || editMode !== "section") return;
       const c = clientToBoardMm(
         e.clientX,
         e.clientY,
@@ -923,6 +929,7 @@ export function useBoardCanvasEditing(opts: {
         sectionZoom,
         sectionPan.x,
         sectionPan.y,
+        { alignY: "top" },
       );
       if (!c) return;
       const t = pickEditTarget(
@@ -1040,7 +1047,7 @@ export function useBoardCanvasEditing(opts: {
       }
       if (!profileBounds) return;
       if (!d) {
-        if (editMode !== "section") return;
+        if (readOnly || editMode !== "section") return;
         const c = clientToBoardMm(
           e.clientX,
           e.clientY,
@@ -1050,6 +1057,7 @@ export function useBoardCanvasEditing(opts: {
           sectionZoom,
           sectionPan.x,
           sectionPan.y,
+          { alignY: "top" },
         );
         if (!c) return;
         onHoverTarget(
@@ -1082,6 +1090,7 @@ export function useBoardCanvasEditing(opts: {
         sectionZoom,
         sectionPan.x,
         sectionPan.y,
+        { alignY: "top" },
       );
       if (!c) return;
       const gx = e.shiftKey ? Math.round(c.x / 5) * 5 : c.x;

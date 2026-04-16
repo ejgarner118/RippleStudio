@@ -35,8 +35,6 @@ import {
   exportNurbsStep,
   exportIgesPlaceholder,
   exportPdfSpecSheet,
-  previewToolpath,
-  postProcessGcode,
   saveBrdToString,
   addRecentFilePath,
   RemoveCrossSectionCommand,
@@ -61,6 +59,7 @@ import {
   safeBoardFileBase,
 } from "./constants/fileDialogs";
 import type { OrbitControlsApi } from "./board3d/BoardScene3D";
+import { CamPreviewScene3D } from "./board3d/CamPreviewScene3D";
 import { prepareCanvas2D } from "./canvas2d/canvasSetup";
 import { renderPlanView } from "./canvas2d/renderPlan";
 import { renderProfileView } from "./canvas2d/renderProfile";
@@ -86,6 +85,8 @@ import { useBoardGeometry } from "./hooks/useBoardGeometry";
 import { useDesktopSettings } from "./hooks/useDesktopSettings";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useWindowCloseGuard } from "./hooks/useWindowCloseGuard";
+import { useWorkflowMode } from "./hooks/useWorkflowMode";
+import { useCamToolpathGeneration } from "./hooks/useCamToolpathGeneration";
 import { confirmDiscardUnsaved } from "./lib/confirmDiscard";
 import {
   formatFsError,
@@ -135,6 +136,7 @@ type FinLayout = {
 
 type BoardMaterialColor = "sage" | "ocean" | "sand" | "charcoal";
 type MeshPreviewMode = "interactivePreview" | "exportParity";
+type InspectSceneLook = "neutral" | "studio" | "wire";
 type RenderDebugSettings = {
   flatShading: boolean;
   frontSideOnly: boolean;
@@ -226,7 +228,13 @@ export default function App() {
     normalView: false,
     highPrecisionDepth: false,
   });
-  const [camPreviewSummary, setCamPreviewSummary] = useState<ReturnType<typeof previewToolpath> | null>(null);
+  const {
+    focusArea,
+    setFocusArea,
+    canMutateBoard,
+    readOnlyCanvas,
+  } = useWorkflowMode("create");
+  const [inspectSceneLook, setInspectSceneLook] = useState<InspectSceneLook>("neutral");
   const [planRefImg, setPlanRefImg] = useState<HTMLImageElement | null>(null);
   const [profileRefImg, setProfileRefImg] = useState<HTMLImageElement | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -237,6 +245,7 @@ export default function App() {
       : 280;
   });
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [camPreviewResetNonce, setCamPreviewResetNonce] = useState(0);
 
   const orbitRef = useRef<OrbitControlsApi | null>(null);
   const appShellRef = useRef<HTMLDivElement | null>(null);
@@ -405,6 +414,7 @@ export default function App() {
       setSelectedControlPoint(indices.length > 0 ? indices[0]! : null);
       setSelectedControlPointKind(indices.length > 0 ? "end" : null);
     },
+    readOnly: readOnlyCanvas,
   });
 
   const clampZoom = useCallback((z: number) => Math.max(0.5, Math.min(z, 12)), []);
@@ -1652,27 +1662,15 @@ export default function App() {
     showToast("Rail apex/tuck adjustment applied", "success");
   }, [brd, sectionIndex, stack, showToast]);
 
-  const generateCamPreview = useCallback(async () => {
-    const len = Math.max(1, analytics.length);
-    const points = Array.from({ length: 60 }, (_, i) => {
-      const t = i / 59;
-      const x = t * len;
-      const z = analytics.samples[Math.min(analytics.samples.length - 1, Math.floor(t * (analytics.samples.length - 1)))]?.rocker ?? 0;
-      return { x, y: 0, z, feed: 2200, rapid: i === 0 };
-    });
-    const preview = previewToolpath(points);
-    setCamPreviewSummary(preview);
-    const gcode = postProcessGcode(points, { id: "generic_3axis", spindleOn: "M3 S12000", spindleOff: "M5" });
-    try {
-      const outPath = await writeTextFromDialogPath(`${safeBoardFileBase(brd.name, "board")}.nc`, gcode);
-      showToast(`CAM preview generated and G-code saved to ${outPath}`, "success");
-    } catch (error) {
-      const msg = formatFsError(error);
-      setFileError(msg);
-      showToast(`CAM preview generated, but G-code export failed: ${msg}`, "error");
-    }
-    trackUxEvent("cam.preview.generated", { points: points.length, warnings: preview.warnings.length });
-  }, [analytics, brd.name, showToast]);
+  const {
+    camPreviewSummary,
+    generateCamPreview,
+  } = useCamToolpathGeneration({
+    analytics,
+    boardName: brd.name,
+    onFileError: setFileError,
+    onToast: (message, tone) => showToast(message, tone),
+  });
 
   useEffect(() => {
     if (!isDirty || !activeProjectId || !activeProject?.autosaveEnabled) return;
@@ -1787,7 +1785,11 @@ export default function App() {
   const resetAllViews = useCallback(() => {
     reset2dViews();
     reset3dView();
+    setCamPreviewResetNonce((n) => n + 1);
   }, [reset2dViews, reset3dView]);
+  const clearComparisonBaseline = useCallback(() => {
+    setComparisonBaseline(null);
+  }, []);
 
   const canUndo = stack.canUndo();
   const canRedo = stack.canRedo();
@@ -1834,6 +1836,12 @@ export default function App() {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
   }, [sidebarWidth]);
+  const onWorkspaceTabChanged = useCallback(() => {
+    setCanvasLayoutNonce((n) => n + 1);
+  }, []);
+  const onRenderDebugPatch = useCallback((patch: Partial<RenderDebugSettings>) => {
+    setRenderDebug((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   return (
     <div className="app-shell" ref={appShellRef} style={appShellStyle}>
@@ -1902,7 +1910,7 @@ export default function App() {
         comparisonDelta={comparisonDelta}
         analytics={analytics}
         onSetComparisonBaseline={setComparisonAsCurrent}
-        onClearComparisonBaseline={() => setComparisonBaseline(null)}
+        onClearComparisonBaseline={clearComparisonBaseline}
         onApplyAutoScale={applyAutoScale}
         projectLibrary={projectLibrary}
         activeProjectId={activeProjectId}
@@ -1927,9 +1935,12 @@ export default function App() {
         meshPreviewMode={meshPreviewMode}
         onMeshPreviewModeChange={setMeshPreviewMode}
         renderDebug={renderDebug}
-        onRenderDebugChange={(patch) =>
-          setRenderDebug((prev) => ({ ...prev, ...patch }))
-        }
+        onRenderDebugChange={onRenderDebugPatch}
+        focusArea={focusArea}
+        onFocusAreaChange={setFocusArea}
+        canMutateBoard={canMutateBoard}
+        inspectSceneLook={inspectSceneLook}
+        onInspectSceneLookChange={setInspectSceneLook}
       />
       <div
         className="app-shell__sidebar-resize"
@@ -1984,6 +1995,8 @@ export default function App() {
         </p>
         <div className="workspace__main">
           <WorkspacePanels
+            focusArea={focusArea}
+            canMutateBoard={canMutateBoard}
             editMode={editMode}
             onSetEditMode={setEditMode}
             onResetPlanView={() => {
@@ -1996,6 +2009,8 @@ export default function App() {
               resetSectionView();
             }}
             onReset3dView={() => reset3dView()}
+            onResetCamPreviewView={() => setCamPreviewResetNonce((n) => n + 1)}
+            onActiveTabChange={onWorkspaceTabChanged}
             planCanvas={
               <canvas
                 ref={canvasPlanRef}
@@ -2065,8 +2080,14 @@ export default function App() {
                     scenePalette={scenePalette}
                     meshPreviewMode={meshPreviewMode}
                     renderDebug={renderDebug}
+                    inspectSceneLook={inspectSceneLook}
                   />
                 </Suspense>
+              </div>
+            }
+            camPreviewCanvas={
+              <div className="three-wrap">
+                <CamPreviewScene3D preview={camPreviewSummary} viewResetNonce={camPreviewResetNonce} />
               </div>
             }
           />

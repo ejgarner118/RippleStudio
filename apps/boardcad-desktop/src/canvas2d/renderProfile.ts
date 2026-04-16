@@ -44,7 +44,7 @@ export function renderProfileView(
     return;
   }
 
-  const base = computeFit(profileStringerBounds, cw, ch, PROFILE_PAD_PX, zoom);
+  const base = computeFit(profileStringerBounds, cw, ch, PROFILE_PAD_PX, zoom, { alignY: "top" });
   const tf = { ...base, panPx, panPy };
 
   if (overlays.grid) {

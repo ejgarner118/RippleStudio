@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
+import { useCallback, useEffect, type ReactNode } from "react";
 import type { BoardEditMode } from "../types/editMode";
-import { useViewportMode } from "../hooks/useViewportMode";
+import type { WorkflowFocusArea } from "../types/workflowFocus";
+import { useWorkspaceTabs, type WorkspaceTab } from "../hooks/useWorkspaceTabs";
 import { SegmentedControl } from "./ui/SegmentedControl";
 
 function PanelChrome({
@@ -43,72 +43,77 @@ function PanelChrome({
   );
 }
 
-const GROUP_ID = "ripple-studio-workspace";
-const PANEL_IDS = ["plan", "profile", "section", "three"] as const;
-
 type WorkspacePanelsProps = {
+  focusArea: WorkflowFocusArea;
+  canMutateBoard: boolean;
   editMode: BoardEditMode;
   onSetEditMode: (mode: BoardEditMode) => void;
   planCanvas: ReactNode;
   profileCanvas: ReactNode;
   sectionCanvas: ReactNode;
   threeCanvas: ReactNode;
+  camPreviewCanvas?: ReactNode;
   onResetPlanView?: () => void;
   onResetProfileView?: () => void;
   onResetSectionView?: () => void;
   onReset3dView?: () => void;
+  onResetCamPreviewView?: () => void;
+  onActiveTabChange?: (tab: WorkspaceTab) => void;
 };
 
 export function WorkspacePanels({
+  focusArea,
+  canMutateBoard,
   editMode,
   onSetEditMode,
   planCanvas,
   profileCanvas,
   sectionCanvas,
   threeCanvas,
+  camPreviewCanvas,
   onResetPlanView,
   onResetProfileView,
   onResetSectionView,
   onReset3dView,
+  onResetCamPreviewView,
+  onActiveTabChange,
 }: WorkspacePanelsProps) {
-  const { isCompact } = useViewportMode(960);
-  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: GROUP_ID,
-    storage: localStorage,
-    panelIds: [...PANEL_IDS],
+  const { tabs, activeTab, setActiveTab } = useWorkspaceTabs({
+    focusArea,
+    editMode,
+    camPreviewAvailable: Boolean(camPreviewCanvas),
   });
-  const [activeCompactPanel, setActiveCompactPanel] = useState<"plan" | "profile" | "section" | "three">("plan");
 
   useEffect(() => {
-    if (!isCompact) return;
-    if (editMode === "outline") setActiveCompactPanel("plan");
-    else if (editMode === "deck" || editMode === "bottom") setActiveCompactPanel("profile");
-    else if (editMode === "section") setActiveCompactPanel("section");
-  }, [editMode, isCompact]);
+    onActiveTabChange?.(activeTab);
+  }, [activeTab, onActiveTabChange]);
 
-  if (isCompact) {
-    return (
-      <div className="workspace-compact">
-        <div className="workspace-compact__switcher">
-          <SegmentedControl
-            ariaLabel="Workspace panel switcher"
-            value={activeCompactPanel}
-            onChange={setActiveCompactPanel}
-            options={[
-              { id: "plan", label: "Plan" },
-              { id: "profile", label: "Profile" },
-              { id: "section", label: "Section" },
-              { id: "three", label: "3D" },
-            ]}
-          />
-        </div>
-        {activeCompactPanel === "plan" ? (
-          <PanelChrome
-            title="Plan"
-            hint="Outline footprint."
-            onResetView={onResetPlanView}
-            resetLabel="Reset panel"
-            headerActions={
+  const onTabChanged = useCallback((tab: WorkspaceTab) => {
+    setActiveTab(tab);
+    if (!canMutateBoard) return;
+    if (tab === "plan") onSetEditMode("outline");
+    if (tab === "profile" && editMode !== "deck" && editMode !== "bottom") onSetEditMode("deck");
+    if (tab === "section") onSetEditMode("section");
+  }, [setActiveTab, canMutateBoard, onSetEditMode, editMode]);
+
+  return (
+    <div className="workspace-compact workspace-panels">
+      <div className="workspace-compact__switcher">
+        <SegmentedControl
+          ariaLabel="Workspace panel switcher"
+          value={activeTab}
+          onChange={onTabChanged}
+          options={tabs}
+        />
+      </div>
+      {activeTab === "plan" ? (
+        <PanelChrome
+          title="Plan"
+          hint="Outline footprint."
+          onResetView={onResetPlanView}
+          resetLabel="Reset panel"
+          headerActions={
+            canMutateBoard ? (
               <button
                 type="button"
                 className={`btn btn--sm ${editMode === "outline" ? "btn--primary" : "btn--subtle"}`}
@@ -116,18 +121,20 @@ export function WorkspacePanels({
               >
                 Outline edit
               </button>
-            }
-          >
-            {planCanvas}
-          </PanelChrome>
-        ) : null}
-        {activeCompactPanel === "profile" ? (
-          <PanelChrome
-            title="Profile"
-            hint="Deck and bottom rocker."
-            onResetView={onResetProfileView}
-            resetLabel="Reset panel"
-            headerActions={
+            ) : undefined
+          }
+        >
+          {planCanvas}
+        </PanelChrome>
+      ) : null}
+      {activeTab === "profile" ? (
+        <PanelChrome
+          title="Profile"
+          hint="Deck and bottom rocker."
+          onResetView={onResetProfileView}
+          resetLabel="Reset panel"
+          headerActions={
+            canMutateBoard ? (
               <div className="panel__header-actions">
                 <button
                   type="button"
@@ -144,18 +151,20 @@ export function WorkspacePanels({
                   Bottom
                 </button>
               </div>
-            }
-          >
-            {profileCanvas}
-          </PanelChrome>
-        ) : null}
-        {activeCompactPanel === "section" ? (
-          <PanelChrome
-            title="Cross-section"
-            hint="Rail shape at selected station."
-            onResetView={onResetSectionView}
-            resetLabel="Reset panel"
-            headerActions={
+            ) : undefined
+          }
+        >
+          {profileCanvas}
+        </PanelChrome>
+      ) : null}
+      {activeTab === "section" ? (
+        <PanelChrome
+          title="Cross-section"
+          hint="Rail shape at selected station."
+          onResetView={onResetSectionView}
+          resetLabel="Reset panel"
+          headerActions={
+            canMutateBoard ? (
               <button
                 type="button"
                 className={`btn btn--sm ${editMode === "section" ? "btn--primary" : "btn--subtle"}`}
@@ -163,123 +172,13 @@ export function WorkspacePanels({
               >
                 Section edit
               </button>
-            }
-          >
-            {sectionCanvas}
-          </PanelChrome>
-        ) : null}
-        {activeCompactPanel === "three" ? (
-          <PanelChrome
-            title="3D preview"
-            hint="Orbit, pan, and zoom."
-            onResetView={onReset3dView}
-            resetLabel="Reset panel"
-          >
-            {threeCanvas}
-          </PanelChrome>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <Group
-      id={GROUP_ID}
-      orientation="vertical"
-      className="workspace-panels"
-      defaultLayout={defaultLayout}
-      onLayoutChanged={onLayoutChanged}
-    >
-      <Panel
-        id="plan"
-        className="workspace-panels__panel"
-        defaultSize="34%"
-        minSize="14%"
-      >
-        <PanelChrome
-          title="Plan"
-          hint="Outline footprint."
-          onResetView={onResetPlanView}
-          resetLabel="Reset panel"
-          headerActions={
-            <button
-              type="button"
-              className={`btn btn--sm ${editMode === "outline" ? "btn--primary" : "btn--subtle"}`}
-              onClick={() => onSetEditMode("outline")}
-            >
-              Outline edit
-            </button>
-          }
-        >
-          {planCanvas}
-        </PanelChrome>
-      </Panel>
-      <Separator className="resize-handle" />
-      <Panel
-        id="profile"
-        className="workspace-panels__panel"
-        defaultSize="18%"
-        minSize="10%"
-      >
-        <PanelChrome
-          title="Profile"
-          hint="Deck and bottom rocker."
-          onResetView={onResetProfileView}
-          resetLabel="Reset panel"
-          headerActions={
-            <div className="panel__header-actions">
-              <button
-                type="button"
-                className={`btn btn--sm ${editMode === "deck" ? "btn--primary" : "btn--subtle"}`}
-                onClick={() => onSetEditMode("deck")}
-              >
-                Deck
-              </button>
-              <button
-                type="button"
-                className={`btn btn--sm ${editMode === "bottom" ? "btn--primary" : "btn--subtle"}`}
-                onClick={() => onSetEditMode("bottom")}
-              >
-                Bottom
-              </button>
-            </div>
-          }
-        >
-          {profileCanvas}
-        </PanelChrome>
-      </Panel>
-      <Separator className="resize-handle" />
-      <Panel
-        id="section"
-        className="workspace-panels__panel"
-        defaultSize="18%"
-        minSize="10%"
-      >
-        <PanelChrome
-          title="Cross-section"
-          hint="Rail shape at selected station."
-          onResetView={onResetSectionView}
-          resetLabel="Reset panel"
-          headerActions={
-            <button
-              type="button"
-              className={`btn btn--sm ${editMode === "section" ? "btn--primary" : "btn--subtle"}`}
-              onClick={() => onSetEditMode("section")}
-            >
-              Section edit
-            </button>
+            ) : undefined
           }
         >
           {sectionCanvas}
         </PanelChrome>
-      </Panel>
-      <Separator className="resize-handle" />
-      <Panel
-        id="three"
-        className="workspace-panels__panel workspace-panels__panel--3d"
-        defaultSize="30%"
-        minSize="16%"
-      >
+      ) : null}
+      {activeTab === "three" ? (
         <PanelChrome
           title="3D preview"
           hint="Orbit, pan, and zoom."
@@ -288,7 +187,17 @@ export function WorkspacePanels({
         >
           {threeCanvas}
         </PanelChrome>
-      </Panel>
-    </Group>
+      ) : null}
+      {activeTab === "camPreview" ? (
+        <PanelChrome
+          title="CAM preview"
+          hint="Toolpath simulation for output review."
+          onResetView={onResetCamPreviewView}
+          resetLabel="Reset panel"
+        >
+          {camPreviewCanvas ?? <div className="three-loading">Generate CAM preview to display toolpath.</div>}
+        </PanelChrome>
+      ) : null}
+    </div>
   );
 }

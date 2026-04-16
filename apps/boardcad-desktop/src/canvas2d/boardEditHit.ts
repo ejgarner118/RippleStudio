@@ -57,6 +57,7 @@ export function clientToBoardMm(
   zoom = 1,
   panPx = 0,
   panPy = 0,
+  fitOpts?: { alignY?: "center" | "top" },
 ): { x: number; y: number; tf: FitTransform; cw: number; ch: number } | null {
   const cw = canvas.width;
   const ch = canvas.height;
@@ -64,7 +65,7 @@ export function clientToBoardMm(
   if (rect.width <= 0 || rect.height <= 0) return null;
   const px = ((clientX - rect.left) / rect.width) * cw;
   const py = ((clientY - rect.top) / rect.height) * ch;
-  const base = computeFit(bounds, cw, ch, padPx, zoom);
+  const base = computeFit(bounds, cw, ch, padPx, zoom, fitOpts);
   const tf: FitTransform = { ...base, panPx, panPy };
   const [x, y] = fromCanvas(px, py, tf, ch);
   return { x, y, tf, cw, ch };
@@ -129,8 +130,8 @@ export function pickEditTarget(
     const cs = brd.crossSections[sectionIndex];
     if (!cs) return null;
     const sp = cs.getBezierSpline();
-    // Prefer Bézier handles over anchors when distances are similar (easier to grab tangents).
-    const hit = nearestControlPointPoint(sp, x, y, radiusBoard, true);
+    // Prioritize anchor control points to avoid accidental handle grabs on dense sections.
+    const hit = nearestControlPointPoint(sp, x, y, radiusBoard, false);
     return hit == null
       ? null
       : { kind: "section", sectionIndex, index: hit.index, point: hit.point };

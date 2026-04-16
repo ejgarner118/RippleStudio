@@ -315,9 +315,16 @@ select:focus:not(:focus-visible) {
 .sidebar__scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
+  overflow-y: auto;
+  scrollbar-gutter: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   padding: var(--space-4);
+}
+
+.sidebar__scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .sidebar-ia-toolbar {

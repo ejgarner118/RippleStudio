@@ -1,6 +1,6 @@
 import { absoluteUrl } from "./siteUrl";
 
-export type MarketingRoute = "/" | "/about" | "/contact";
+export type MarketingRoute = "/" | "/about" | "/contact" | "/wiki";
 
 type PageSeo = {
   title: string;
@@ -28,6 +28,12 @@ const PAGES: Record<MarketingRoute, PageSeo> = {
     title: "Contact & updates — Ripple Studio",
     description:
       "Join the Ripple Studio waitlist, request beta access, or email support. The full account portal is coming soon.",
+    imagePath: DEFAULT_IMAGE,
+  },
+  "/wiki": {
+    title: "Ripple Studio Wiki — Instruction Hub",
+    description:
+      "Learn Ripple Studio workflows for shaping, inspection, versioning, and CNC output. Includes geometry fundamentals, workspace guidance, and production pipeline references.",
     imagePath: DEFAULT_IMAGE,
   },
 };

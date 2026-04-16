@@ -77,6 +77,116 @@ export type PostProcessorProfile = {
   linearCode?: string;
 };
 
+export type CamPassType = "rough" | "finish";
+export type CamPassSpec = {
+  type: CamPassType;
+  stepoverMm: number;
+  feed: number;
+  safeZ: number;
+  leadInMm: number;
+};
+
+export type CamToolpathConfig = {
+  rough: CamPassSpec;
+  finish: CamPassSpec;
+  laneCountMin?: number;
+};
+
+export type CamSurfaceSample = {
+  x: number;
+  width: number;
+  thickness: number;
+  rocker: number;
+};
+
+export const CAM_PROFILE_BALANCED: CamToolpathConfig = {
+  rough: {
+    type: "rough",
+    stepoverMm: 12,
+    feed: 2600,
+    safeZ: 42,
+    leadInMm: 20,
+  },
+  finish: {
+    type: "finish",
+    stepoverMm: 6,
+    feed: 1700,
+    safeZ: 36,
+    leadInMm: 16,
+  },
+  laneCountMin: 9,
+};
+
+export function buildRasterDeckToolpath(
+  boardLengthMm: number,
+  samples: CamSurfaceSample[],
+  cfg: CamToolpathConfig = CAM_PROFILE_BALANCED,
+): ToolpathPoint[] {
+  const length = Math.max(1, boardLengthMm);
+  const maxWidth = Math.max(1, ...samples.map((s) => s.width));
+  const passes: CamPassSpec[] = [cfg.rough, cfg.finish];
+  const points: ToolpathPoint[] = [];
+
+  const sampleAtX = (x: number): CamSurfaceSample => {
+    if (samples.length === 0) return { x, width: maxWidth, thickness: 0, rocker: 0 };
+    if (x <= samples[0]!.x) return samples[0]!;
+    if (x >= samples[samples.length - 1]!.x) return samples[samples.length - 1]!;
+    for (let i = 1; i < samples.length; i++) {
+      const curr = samples[i]!;
+      if (x <= curr.x) {
+        const prev = samples[i - 1]!;
+        const t = (x - prev.x) / Math.max(1e-6, curr.x - prev.x);
+        return {
+          x,
+          width: prev.width + (curr.width - prev.width) * t,
+          thickness: prev.thickness + (curr.thickness - prev.thickness) * t,
+          rocker: prev.rocker + (curr.rocker - prev.rocker) * t,
+        };
+      }
+    }
+    return samples[samples.length - 1]!;
+  };
+
+  const sampleDeckZ = (x: number, y: number) => {
+    const s = sampleAtX(Math.max(0, Math.min(length, x)));
+    const halfWidth = Math.max(1e-3, s.width * 0.5);
+    const edgeRatio = Math.min(1, Math.abs(y) / halfWidth);
+    const crown = Math.max(0, 1 - Math.pow(edgeRatio, 1.7));
+    return s.rocker + s.thickness * crown;
+  };
+
+  for (const pass of passes) {
+    const laneCount = Math.max(
+      cfg.laneCountMin ?? 5,
+      Math.floor(maxWidth / Math.max(1, pass.stepoverMm)) + 1,
+    );
+    const laneStep = maxWidth / Math.max(1, laneCount - 1);
+    const yStart = -maxWidth * 0.5;
+    const xMin = -pass.leadInMm;
+    const xMax = length + pass.leadInMm;
+    const xSteps = pass.type === "rough" ? 72 : 120;
+
+    for (let lane = 0; lane < laneCount; lane++) {
+      const y = yStart + lane * laneStep;
+      const forward = lane % 2 === 0;
+      const laneXStart = forward ? xMin : xMax;
+      const laneXEnd = forward ? xMax : xMin;
+      points.push({ x: laneXStart, y, z: pass.safeZ, feed: 8000, rapid: true });
+      const startSurface = sampleDeckZ(Math.max(0, Math.min(length, laneXStart)), y);
+      const plungeOffset = pass.type === "rough" ? 6 : 3.5;
+      points.push({ x: laneXStart, y, z: startSurface + plungeOffset, feed: Math.max(900, pass.feed * 0.75) });
+      for (let i = 0; i <= xSteps; i++) {
+        const t = i / xSteps;
+        const x = laneXStart + (laneXEnd - laneXStart) * t;
+        points.push({ x, y, z: sampleDeckZ(x, y), feed: pass.feed });
+      }
+      points.push({ x: laneXEnd, y, z: pass.safeZ, feed: 8000, rapid: true });
+    }
+  }
+
+  return points;
+}
+
 export function postProcessGcode(points: ToolpathPoint[], profile: PostProcessorProfile): string {
   const rapidCode = profile.rapidCode ?? "G0";
   const linearCode = profile.linearCode ?? "G1";

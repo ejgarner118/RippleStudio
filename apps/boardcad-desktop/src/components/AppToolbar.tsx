@@ -128,7 +128,7 @@ export function AppToolbar({
       <a className="app-toolbar__brand" href="/" onClick={() => closeMenus()}>
         <img
           className="app-toolbar__logo"
-          src="/branding/RS_LogoBoard100.png"
+          src="/RS_Logo_Update100.png"
           alt=""
           width={28}
           height={28}

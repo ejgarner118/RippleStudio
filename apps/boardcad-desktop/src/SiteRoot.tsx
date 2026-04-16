@@ -5,7 +5,7 @@ import { APP_DISPLAY_NAME } from "./constants/brand";
 import { applyMarketingRouteSeo } from "./seo/documentSeo";
 import "./site.css";
 
-type Route = "/" | "/about" | "/contact" | "/app";
+type Route = "/" | "/about" | "/contact" | "/wiki" | "/app";
 type NavRoute = Exclude<Route, "/app">;
 
 type FeatureItem = {
@@ -15,6 +15,7 @@ type FeatureItem = {
 
 const NAV_ITEMS: Array<{ href: NavRoute; label: string }> = [
   { href: "/", label: "Software" },
+  { href: "/wiki", label: "Wiki" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Log In" },
 ];
@@ -85,7 +86,36 @@ const COMING_SOON_ITEMS = [
   "Release notes and roadmap access",
 ];
 
+const WIKI_SECTIONS: Array<{ id: string; title: string; summary: string }> = [
+  {
+    id: "first-curve",
+    title: "First Curve: 120-Second Workflow",
+    summary: "From blank canvas to CNC-ready output using Create -> Inspect -> Output.",
+  },
+  {
+    id: "geometry-fundamentals",
+    title: "Computational Geometry Fundamentals",
+    summary: "How plan/profile/section edits map to liters, surface response, and continuity.",
+  },
+  {
+    id: "workspace-logic",
+    title: "Studio Workspace Logic",
+    summary: "Modal interface behavior for Create, Inspect, and Output flow-state operation.",
+  },
+  {
+    id: "ghosting-versioning",
+    title: "Ghosting and Versioning (Baseline Deltas)",
+    summary: "Scientific iteration through snapshot logic and translucent baseline comparison.",
+  },
+  {
+    id: "production-pipeline",
+    title: "Production Pipeline (G-Code Handoff)",
+    summary: "Deterministic rough/finish strategy, Safe-Z checks, and downstream toolchain parity.",
+  },
+];
+
 function normalizePathname(pathname: string): Route {
+  if (pathname === "/wiki") return "/wiki";
   if (pathname === "/about") return "/about";
   if (pathname === "/contact") return "/contact";
   if (pathname === "/app") return "/app";
@@ -126,7 +156,7 @@ function SiteLayout({ children, route }: { children: React.ReactNode; route: Rou
     <div className="site-shell">
       <header className="site-header">
         <a href="/" className="site-brand">
-          <img src="/branding/RS_LogoBoard100.png" alt="Ripple Studio" width={28} height={28} />
+          <img src="/RS_Logo_Update100.png" alt="Ripple Studio" width={28} height={28} />
           <span>{APP_DISPLAY_NAME}</span>
         </a>
         <nav className="site-nav" aria-label="Primary">
@@ -142,6 +172,7 @@ function SiteLayout({ children, route }: { children: React.ReactNode; route: Rou
       <footer className="site-footer">
         <span>{new Date().getFullYear()} Ripple Studio · Web-first surfboard CAD</span>
         <div className="site-footer__links">
+          <a href="/wiki">Wiki</a>
           <a href="/about">About</a>
           <a href="/contact">Contact</a>
           <a href="/app">Launch App</a>
@@ -219,6 +250,136 @@ function HomePage({ route }: { route: Route }) {
         <a className="btn btn--primary" href="/app">
           Enter the Studio
         </a>
+      </section>
+    </SiteLayout>
+  );
+}
+
+function WikiPage({ route }: { route: Route }) {
+  return (
+    <SiteLayout route={route}>
+      <section className="wiki-shell" aria-label="Ripple Studio instruction hub">
+        <aside className="wiki-nav glass-card">
+          <p className="hero__eyebrow">Industrial Precision</p>
+          <h2>Library of Flow</h2>
+          <nav aria-label="Wiki sections">
+            {WIKI_SECTIONS.map((section) => (
+              <a key={section.id} href={`#${section.id}`}>
+                {section.title}
+              </a>
+            ))}
+          </nav>
+          <p className="wiki-nav__hint">Scan-to-deep-dive: each section is designed for quick lookup then technical depth.</p>
+        </aside>
+
+        <article className="wiki-content">
+          <div className="wiki-command glass-card" role="search">
+            <span>Cmd + K to Search the Flow</span>
+          </div>
+          <header className="wiki-bento">
+            <article className="wiki-bento__item wiki-bento__item--large glass-card">
+              <h1>Ripple Studio | The Library of Flow</h1>
+              <p>
+                The digital workshop where shaping intuition meets the mathematical rigor of the Ripple Engine.
+              </p>
+              <a className="btn btn--primary" href="/app">Open Studio</a>
+            </article>
+            <article className="wiki-bento__item glass-soft">
+              <h3>Keyboard Quicksheet</h3>
+              <ul>
+                <li>A -&gt; insert point</li>
+                <li>Del -&gt; remove point</li>
+                <li>C -&gt; cycle handle mode</li>
+                <li>+/- -&gt; zoom active 2D canvas</li>
+                <li>Cmd/Ctrl + K -&gt; command search</li>
+              </ul>
+            </article>
+            <article className="wiki-bento__item glass-soft">
+              <h3>The Shaper&apos;s Glossary</h3>
+              <ul>
+                <li><span className="wiki-glossary-term">Ghosting</span> -&gt; baseline delta overlay</li>
+                <li><span className="wiki-glossary-term">Rail tuck</span> -&gt; lower rail transition depth</li>
+                <li><span className="wiki-glossary-term">Stepover</span> -&gt; spacing between CAM lanes</li>
+              </ul>
+            </article>
+          </header>
+
+          {WIKI_SECTIONS.map((section) => (
+            <section key={section.id} id={section.id} className="wiki-section glass-soft">
+              <h2>{section.title}</h2>
+              <p>{section.summary}</p>
+              {section.id === "first-curve" ? (
+                <ol>
+                  <li>Initialize in <strong>Create</strong>, keep the Edit panel expanded.</li>
+                  <li>Architect with Plan/Profile/Section tabs to define primary curves.</li>
+                  <li>Validate in <strong>Inspect</strong> (read-only verification and analytics).</li>
+                  <li>Manufacture in <strong>Output</strong>: generate CAM preview, verify strategy, export `.nc`.</li>
+                </ol>
+              ) : null}
+              {section.id === "geometry-fundamentals" ? (
+                <ul>
+                  <li>Plan/Profile/Section edits map to liters, planning surface, and displacement behavior.</li>
+                  <li>Curvature continuity across rail transitions reduces abrupt flow separation.</li>
+                  <li>Use station-by-station inspection to confirm smooth rocker evolution.</li>
+                </ul>
+              ) : null}
+              {section.id === "workspace-logic" ? (
+                <ul>
+                  <li>Create: high-density spline and vertex manipulation.</li>
+                  <li>Inspect: read-only verification with visual/metric diagnostics.</li>
+                  <li>Output: technical surface focused on CAM quality and handoff checks.</li>
+                </ul>
+              ) : null}
+              {section.id === "ghosting-versioning" ? (
+                <ul>
+                  <li>Capture snapshots at key shaping milestones.</li>
+                  <li>Enable ghost overlays to visualize exact delta from prior versions.</li>
+                  <li>Track how small rocker or rail changes affect whole-board volume profile.</li>
+                </ul>
+              ) : null}
+              {section.id === "production-pipeline" ? (
+                <>
+                  <p className="instruction-callout">
+                    CAM quality target: deterministic roughing + finishing, safe-Z retractions, and preview/G-code parity checks.
+                  </p>
+                  <ul>
+                    <li><a href="https://github.com/aewallin/opencamlib" target="_blank" rel="noreferrer">OpenCAMLib</a></li>
+                    <li><a href="https://wiki.freecad.org/Path_Workbench" target="_blank" rel="noreferrer">FreeCAD Path Workbench</a></li>
+                    <li><a href="https://github.com/vilemnovak/blendercam" target="_blank" rel="noreferrer">BlenderCAM (Fabex)</a></li>
+                    <li><a href="https://dev.grid.space/kiri/" target="_blank" rel="noreferrer">Kiri:Moto</a></li>
+                  </ul>
+                </>
+              ) : null}
+            </section>
+          ))}
+
+          <section id="global-keys" className="wiki-section glass-soft">
+            <h2>Global Technical Keys</h2>
+            <table className="wiki-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                  <th>Context</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>A</code></td><td>Insert control point</td><td>Edit mode</td></tr>
+                <tr><td><code>Del</code></td><td>Remove point</td><td>Edit mode</td></tr>
+                <tr><td><code>C</code></td><td>Cycle handle mode</td><td>Node selection</td></tr>
+                <tr><td><code>+</code> / <code>-</code></td><td>Zoom 2D canvas</td><td>Active viewport</td></tr>
+                <tr><td><code>Cmd/Ctrl + K</code></td><td>Command search</td><td>Global</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </article>
+
+        <aside className="wiki-outline glass-card" aria-label="On this page">
+          <h3>On this page</h3>
+          {WIKI_SECTIONS.map((section) => (
+            <a key={section.id} href={`#${section.id}`}>{section.title}</a>
+          ))}
+        </aside>
       </section>
     </SiteLayout>
   );
@@ -387,6 +548,10 @@ export function SiteRoot() {
 
   useEffect(() => {
     if (route === "/app") return;
+    if (route === "/wiki") {
+      applyMarketingRouteSeo("/wiki");
+      return;
+    }
     if (route === "/about") {
       applyMarketingRouteSeo("/about");
       return;
@@ -427,6 +592,8 @@ export function SiteRoot() {
       <Analytics route={route} path={route} />
       {route === "/app" ? (
         <App />
+      ) : route === "/wiki" ? (
+        <WikiPage route={route} />
       ) : route === "/about" ? (
         <AboutPage route={route} />
       ) : route === "/contact" ? (
