@@ -16,6 +16,7 @@
   "dependencies": {
     "@boardcad/core": "*",
     "@react-three/fiber": "^9.0.0",
+    "@vercel/analytics": "^2.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-resizable-panels": "^4.9.0",

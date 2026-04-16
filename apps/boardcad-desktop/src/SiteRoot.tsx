@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import { useEffect, useState } from "react";
 import App from "./App";
 import { APP_DISPLAY_NAME } from "./constants/brand";
@@ -421,9 +422,19 @@ export function SiteRoot() {
     return () => document.removeEventListener("click", onClick);
   }, []);
 
-  if (route === "/app") return <App />;
-  if (route === "/about") return <AboutPage route={route} />;
-  if (route === "/contact") return <ContactPage route={route} />;
-  return <HomePage route={route} />;
+  return (
+    <>
+      <Analytics route={route} path={route} />
+      {route === "/app" ? (
+        <App />
+      ) : route === "/about" ? (
+        <AboutPage route={route} />
+      ) : route === "/contact" ? (
+        <ContactPage route={route} />
+      ) : (
+        <HomePage route={route} />
+      )}
+    </>
+  );
 }
 
